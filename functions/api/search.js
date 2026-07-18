@@ -7,6 +7,30 @@ function domainOf(u) {
   catch { return ''; }
 }
 
+const CN_DOMAINS = new Set([
+  '1688.com', 'alibaba.com', 'alibaba.cn', 'taobao.com', 'tmall.com', 'jd.com',
+  'pinduoduo.com', 'zhihu.com', 'baidu.com', 'sina.com.cn', 'sohu.com', '163.com',
+  'qq.com', 'weibo.com', 'weidian.com', 'made-in-china.com', 'hisupplier.com',
+  'globalsources.com', 'ec21.com', 'tradekey.com', 'dhgate.com', 'aliexpress.com',
+  'china.cn', 'chinan.cn', 'yiwu.cn', 'cantonfair.org.cn', 'madeinchina.com',
+  'chinavasion.com', 'tomtop.com', 'banggood.com', 'lightinthebox.com', 'dx.com',
+  'suning.com', 'dangdang.com', 'gome.com.cn', 'vip.com', 'joom.com'
+]);
+
+function isChinaSite(item) {
+  const dom = domainOf(item.url || '').replace(/^www\./, '');
+  if (CN_DOMAINS.has(dom)) return true;
+  if (dom.endsWith('.cn')) return true;
+  const text = ((item.name || '') + ' ' + (item.snippet || '') + ' ' + (item.siteName || '')).toLowerCase();
+  const cnKw = [
+    '1688', 'alibaba', 'made-in-china', 'made in china', 'china supplier', 'chinese manufacturer',
+    'shenzhen', 'guangdong', 'yiwu', 'china factory', 'manufacturer in china', 'supplier from china',
+    '中国', '中國', '阿里巴巴', '淘宝', '天貓', '天猫', '京东', '拼多多', '中国制造', '中国工厂',
+    '厂家', '供应商'
+  ];
+  return cnKw.some(k => text.includes(k));
+}
+
 function extractContacts(text) {
   const emails = (text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) || [])
     .map(e => e.toLowerCase())
@@ -25,10 +49,13 @@ function extractContacts(text) {
 }
 
 function classify(item) {
+  // 优先把中国站/中国平台过滤掉
+  if (isChinaSite(item))
+    return { type: '工厂/竞争对手(建议排除)', score: 'D', note: '疑似中国站点/平台，已过滤' };
+
   const text = ((item.name || '') + ' ' + (item.snippet || '') + ' ' + (item.siteName || '')).toLowerCase();
   const dom = domainOf(item.url || '');
-  const sellerKw = ['manufacturer', 'factory', 'made-in-china', 'hisupplier', 'alibaba',
-    'oem', 'odm', 'supplier from china', 'china factory', 'shenzhen', 'guangdong', 'china wholesale', 'from china'];
+  const sellerKw = ['manufacturer', 'factory', 'hisupplier', 'oem', 'odm', 'supplier from china', 'china factory', 'from china'];
   const buyerKw = ['distributor', 'promotional products', 'promotional', 'wholesale', 'gift',
     'souvenir', 'event', 'agency', 'inc', 'llc', 'corp', 'company', 'based in', 'we supply',
     'request a quote', 'get a quote', 'linkedin.com/company', 'reseller', 'dealer'];
@@ -91,8 +118,14 @@ export async function onRequest(context) {
     `${product} ${t.dist} ${country} ${t.promo}`,
     `${product} ${t.wholesale} ${country} ${t.buyBulk}`
   ];
-  if (exclude) {
-    const ex = exclude.split(/[\s,，]+/).filter(Boolean).join(' -');
+
+  // 当目标不是中国市场时，自动追加中国平台/供应链排除词，让博查尽量少召回中国站
+  const isTargetingChina = target === 'Chinese' || country.toLowerCase() === 'china' || country.toLowerCase() === 'chinese';
+  const autoExclude = isTargetingChina ? [] : ['china', 'chinese', '1688', 'alibaba', 'made-in-china', 'tmall', 'jd', 'taobao', 'pinduoduo', 'zhihu', 'baidu', 'sina', 'sohu'];
+  const userExclude = (exclude || '').split(/[\s,，]+/).filter(Boolean);
+  const allExcludes = [...new Set([...autoExclude, ...userExclude])];
+  if (allExcludes.length) {
+    const ex = allExcludes.join(' -');
     queries = queries.map(q => q + ' -' + ex);
   }
 
