@@ -15,6 +15,10 @@
   .form { background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:18px; display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
   .form label { font-size:12px; color:#4e5969; display:block; margin-bottom:6px; }
   .form input { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; }
+  .form input[readonly] { background:#f7f8fa; color:#4e5969; }
+  .form select { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; background:#fff; }
+  .input-pair { display:flex; gap:10px; }
+  .input-pair input { flex:1; }
   .form .full { grid-column: 1 / -1; }
   .row { display:flex; gap:10px; align-items:center; margin-top:16px; flex-wrap:wrap; }
   button { background:#165dff; color:#fff; border:0; padding:10px 18px; border-radius:7px; font-size:14px; cursor:pointer; }
@@ -81,24 +85,49 @@
   <!-- ============ 客户开发视图 ============ -->
   <div id="devView" class="view">
     <div class="form">
-      <div>
-        <label>产品（具体品类）</label>
-        <input id="product" value="custom lapel pins" />
+      <div class="full" style="display:flex;gap:10px;align-items:flex-end;">
+        <div style="flex:1">
+          <label>翻译目标语言</label>
+          <select id="targetLang">
+            <option value="English" selected>English（英语）</option>
+            <option value="Spanish">Spanish（西班牙语）</option>
+            <option value="French">French（法语）</option>
+            <option value="German">German（德语）</option>
+            <option value="Russian">Russian（俄语）</option>
+            <option value="Portuguese">Portuguese（葡萄牙语）</option>
+            <option value="Italian">Italian（意大利语）</option>
+            <option value="Japanese">Japanese（日语）</option>
+          </select>
+        </div>
+        <button id="translateBtn" class="ghost" style="margin-bottom:0">翻译关键词</button>
       </div>
       <div>
-        <label>目标国家</label>
-        <input id="country" value="United States" />
+        <label>产品（具体品类）— 左：原文 / 右：翻译结果</label>
+        <div class="input-pair">
+          <input id="product" value="custom lapel pins" placeholder="如：全屋定制" />
+          <input id="productTranslated" readonly placeholder="翻译结果（用于搜索）" />
+        </div>
+      </div>
+      <div>
+        <label>目标国家 — 左：原文 / 右：翻译结果</label>
+        <div class="input-pair">
+          <input id="country" value="United States" placeholder="如：美国" />
+          <input id="countryTranslated" readonly placeholder="翻译结果（用于搜索）" />
+        </div>
+      </div>
+      <div>
+        <label>排除词（空格分隔）— 左：原文 / 右：翻译结果</label>
+        <div class="input-pair">
+          <input id="exclude" value="china factory" placeholder="如：中国工厂 阿里巴巴" />
+          <input id="excludeTranslated" readonly placeholder="翻译结果（用于搜索）" />
+        </div>
       </div>
       <div>
         <label>每词数量</label>
         <input id="n" type="number" value="10" min="1" max="30" />
       </div>
-      <div>
-        <label>排除词（空格分隔，如 china factory）</label>
-        <input id="exclude" value="china factory" />
-      </div>
       <div class="full">
-        <label>实际搜索词（自动生成，含两个买家词变体）</label>
+        <label>实际搜索词（根据右侧翻译结果生成，含两个买家词变体）</label>
         <input id="qpreview" readonly />
       </div>
     </div>
@@ -236,54 +265,91 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
 // ========== 搜索（客户开发）==========
 function hasChinese(s) { return /[\u4e00-\u9fa5]/.test(s || ''); }
 
+function translatedValue(id) {
+  return document.getElementById(id + 'Translated').value || document.getElementById(id).value;
+}
+
 function refreshQuery() {
-  const p = document.getElementById('product').value;
-  const c = document.getElementById('country').value;
-  const ex = document.getElementById('exclude').value;
+  const p = translatedValue('product');
+  const c = translatedValue('country');
+  const ex = translatedValue('exclude');
   let q = `${p} distributor ${c} promotional products`;
   if (ex) q += ' -' + ex.split(/[\s,，]+/).filter(Boolean).join(' -');
   document.getElementById('qpreview').value = q + '  |  ' + `${p} wholesale ${c} buy bulk`;
 }
-['product','country','exclude'].forEach(id => document.getElementById(id).addEventListener('input', refreshQuery));
+
+function syncTranslatedDefaults() {
+  ['product', 'country', 'exclude'].forEach(id => {
+    document.getElementById(id + 'Translated').value = document.getElementById(id).value;
+  });
+}
+
+['product', 'country', 'exclude', 'productTranslated', 'countryTranslated', 'excludeTranslated'].forEach(id => {
+  document.getElementById(id).addEventListener('input', refreshQuery);
+});
+syncTranslatedDefaults();
 refreshQuery();
+
+async function doTranslate() {
+  const product = document.getElementById('product').value;
+  const country = document.getElementById('country').value;
+  const exclude = document.getElementById('exclude').value;
+  const targetLang = document.getElementById('targetLang').value;
+  const meta = document.getElementById('meta');
+
+  if (!hasChinese(product) && !hasChinese(country) && !hasChinese(exclude)) {
+    syncTranslatedDefaults();
+    refreshQuery();
+    meta.textContent = '未检测到中文，已直接使用原文。';
+    return true;
+  }
+
+  meta.textContent = `正在翻译为 ${targetLang}…`;
+  try {
+    const tr = await fetch('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product, country, exclude, target: targetLang })
+    });
+    const td = await tr.json();
+    if (td.error) {
+      meta.textContent = '翻译失败：' + td.error;
+      return false;
+    }
+    document.getElementById('productTranslated').value = td.product;
+    document.getElementById('countryTranslated').value = td.country;
+    document.getElementById('excludeTranslated').value = td.exclude;
+    refreshQuery();
+    meta.textContent = `已翻译为 ${targetLang}：${td.product} · ${td.country}${td.exclude ? '（排除：' + td.exclude + '）' : ''}`;
+    return true;
+  } catch (e) {
+    meta.textContent = '翻译请求失败：' + e;
+    return false;
+  }
+}
+
+document.getElementById('translateBtn').addEventListener('click', doTranslate);
 
 document.getElementById('go').addEventListener('click', async () => {
   const meta = document.getElementById('meta');
   const box = document.getElementById('result');
-  const productInput = document.getElementById('product');
-  const countryInput = document.getElementById('country');
-  const excludeInput = document.getElementById('exclude');
-  const n = document.getElementById('n').value;
-
   meta.textContent = '准备搜索…'; box.innerHTML = '';
 
-  // 如果关键字段包含中文，先调 /api/translate 翻译成英文
-  if (hasChinese(productInput.value) || hasChinese(countryInput.value) || hasChinese(excludeInput.value)) {
-    meta.textContent = '检测到中文，正在翻译…';
-    try {
-      const tr = await fetch('/api/translate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product: productInput.value, country: countryInput.value, exclude: excludeInput.value })
-      });
-      const td = await tr.json();
-      if (td.error) { box.innerHTML = `<div class="err">翻译失败：${escHtml(td.error)}</div>`; meta.textContent = ''; return; }
-      productInput.value = td.product;
-      countryInput.value = td.country;
-      excludeInput.value = td.exclude;
-      refreshQuery();
-      meta.textContent = `已翻译：${td.product} · ${td.country}${td.exclude ? '（排除：' + td.exclude + '）' : ''}`;
-    } catch (e) {
-      box.innerHTML = `<div class="err">翻译请求失败：${e}</div>`; meta.textContent = ''; return;
-    }
+  const product = document.getElementById('product').value;
+  const country = document.getElementById('country').value;
+  const exclude = document.getElementById('exclude').value;
+  if (hasChinese(product) || hasChinese(country) || hasChinese(exclude)) {
+    const ok = await doTranslate();
+    if (!ok) return;
   }
 
   await doSearch();
 });
 
 async function doSearch() {
-  const product = document.getElementById('product').value;
-  const country = document.getElementById('country').value;
-  const exclude = document.getElementById('exclude').value;
+  const product = translatedValue('product');
+  const country = translatedValue('country');
+  const exclude = translatedValue('exclude');
   const n = document.getElementById('n').value;
   const meta = document.getElementById('meta');
   const box = document.getElementById('result');
@@ -791,7 +857,7 @@ async function genOneDraft(r) {
   const resp = await fetch('/api/draft', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      company: r.name || '', website: r.url, product: document.getElementById('product').value,
+      company: r.name || '', website: r.url, product: translatedValue('product'),
       sellingPoints: cfg.selling || '', brand: cfg.brand || '', senderName: cfg.sender || '',
       senderEmail: '', type: r.type || '', snippet: r.snippet || ''
     })

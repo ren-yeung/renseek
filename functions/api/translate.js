@@ -30,12 +30,13 @@ export async function onRequest(context) {
       { status: 400, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   }
 
-  const { product = '', country = '', exclude = '' } = body;
+  const { product = '', country = '', exclude = '', target = 'English' } = body;
+  const targetLang = (target || 'English').trim();
 
   // 没有中文就直接返回原值
   if (!hasChinese(product) && !hasChinese(country) && !hasChinese(exclude)) {
     return new Response(
-      JSON.stringify({ product, country, exclude, translated: false }),
+      JSON.stringify({ product, country, exclude, target: targetLang, translated: false }),
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } }
     );
   }
@@ -43,15 +44,15 @@ export async function onRequest(context) {
   const base = (env.DEEPSEEK_BASE || 'https://api.deepseek.com/v1').replace(/\/$/, '');
   const model = env.DEEPSEEK_MODEL || 'deepseek-chat';
 
-  const system = `你是一名外贸关键词翻译助手。请把用户输入的「产品、目标国家、排除词」翻译成适合在 Google / 博查上搜索的英文关键词。
+  const system = `你是一名外贸关键词翻译助手。请把用户输入的「产品、目标国家、排除词」翻译成适合在 Google / 博查上搜索的 ${targetLang} 关键词。
 要求：
 - 只输出 JSON，不要解释、不要 markdown
-- 产品：翻译成具体品类英文搜索词，如"定制徽章"→"custom lapel pins"；"金属徽章"→"metal enamel pins"
-- 国家：翻译成英文国家名或地区名，如"美国"→"United States"；"欧洲"→"Europe"
-- 排除词：如果包含中文，逐个词/短语翻译成英文，保持空格分隔，如"中国工厂 阿里巴巴"→"china factory alibaba"
+- 产品：翻译成具体品类 ${targetLang} 搜索词，如"定制徽章"→"custom lapel pins"（英文）
+- 国家：翻译成 ${targetLang} 国家名或地区名，如"美国"→"United States"（英文）
+- 排除词：如果包含中文，逐个词/短语翻译成 ${targetLang}，保持空格分隔，如"中国工厂 阿里巴巴"→"china factory alibaba"（英文）
 - 输出格式：{"product": "...", "country": "...", "exclude": "..."}`;
 
-  const user = `请将以下字段翻译成英文搜索词（保留非中文字符不变，仅翻译中文部分）：
+  const user = `请将以下字段翻译成 ${targetLang} 搜索词（保留非中文字符不变，仅翻译中文部分）：
 产品：${product || '（未提供）'}
 目标国家：${country || '（未提供）'}
 排除词：${exclude || '（未提供）'}`;
@@ -90,6 +91,7 @@ export async function onRequest(context) {
         product: (parsed.product || product).trim(),
         country: (parsed.country || country).trim(),
         exclude: (parsed.exclude || exclude).trim(),
+        target: targetLang,
         translated: true
       }),
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } }
