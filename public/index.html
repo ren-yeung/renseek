@@ -135,12 +135,15 @@
     <div class="sub2" id="draftSub"></div>
     <label>主题</label>
     <input id="draftSubject" placeholder="生成后自动填充，可手动修改" />
+    <label>发件邮箱（可选，默认 hello@kuajing.space）</label>
+    <input id="draftFrom" placeholder="如 PinCraft <noreply@kuajing.space>" />
     <label>正文</label>
     <textarea id="draftBody" placeholder="点「生成开发信」由 DeepSeek 撰写…"></textarea>
     <div class="acts">
       <button id="draftGen">生成开发信</button>
       <button class="ghost" id="draftCopy">复制全文</button>
       <button class="ghost" id="draftGmail">用 Gmail 发送</button>
+      <button class="ghost" id="draftResend" style="background:#00a76f;color:#fff;border-color:#00a76f">云端发送</button>
       <button class="ghost" id="draftClose">关闭</button>
     </div>
     <div class="hint" id="draftHint"></div>
@@ -514,6 +517,35 @@ document.getElementById('draftGmail').addEventListener('click', () => {
   const su = encodeURIComponent(document.getElementById('draftSubject').value);
   const body = encodeURIComponent(document.getElementById('draftBody').value);
   window.open('https://mail.google.com/mail/?view=cm&to=' + encodeURIComponent(email) + '&su=' + su + '&body=' + body, '_blank');
+});
+
+// 云端发送：通过 Cloudflare Pages Function + Resend 发邮件（无需本机 Gmail）
+document.getElementById('draftResend').addEventListener('click', async () => {
+  if (!draftRow) return;
+  const email = (draftRow.emails && draftRow.emails[0]) || draftRow.email;
+  if (!email) { document.getElementById('draftHint').textContent = '该客户还没有邮箱，先点「深挖」抓官网邮箱再发送。'; return; }
+  const btn = document.getElementById('draftResend');
+  const hint = document.getElementById('draftHint');
+  btn.disabled = true; btn.textContent = '发送中…'; hint.textContent = '';
+  try {
+    const subject = document.getElementById('draftSubject').value;
+    const bodyText = document.getElementById('draftBody').value;
+    if (!subject || !bodyText) { throw new Error('主题或正文为空'); }
+    const html = bodyText.replace(/\n/g, '<br>');
+    const from = document.getElementById('draftFrom').value.trim() || 'Renseek <hello@kuajing.space>';
+    const r = await fetch('/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: email, subject, html, text: bodyText, from })
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    hint.textContent = '✅ 已发送，Resend ID：' + d.id;
+  } catch (e) {
+    hint.textContent = '❌ 发送失败：' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '云端发送';
+  }
 });
 
 // 批量生成开发信（A/B 类），缓存到 row.draft，随后可导出含开发信的 CSV
