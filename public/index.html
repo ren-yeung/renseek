@@ -81,6 +81,14 @@
     <span class="meta" id="meta"></span>
   </div>
 
+  <div class="row" style="margin-top:12px">
+    <label style="font-size:12px;color:#4e5969">按邮箱筛选：</label>
+    <input id="emailFilter" placeholder="如 gmail.com，留空=显示全部" style="padding:8px 11px;border:1px solid #d0d3d9;border-radius:7px;font-size:13px;width:220px" />
+    <button class="ghost mini" id="onlyGmail">仅 gmail.com</button>
+    <button class="ghost mini" id="clearFilter">清除</button>
+    <span class="meta" id="filterMeta" style="margin-left:6px"></span>
+  </div>
+
   <div id="result"></div>
 
   <div class="myleads">
@@ -92,6 +100,8 @@
 <script>
 const LS_KEY = 'renseek_leads';
 let lastData = null;
+let allRows = [];      // 最近一次搜索的全部结果（未筛选）
+let emailFilter = '';  // 邮箱/域名筛选关键字（小写）
 let myLeads = loadMy();
 
 function loadMy() {
@@ -126,8 +136,12 @@ document.getElementById('go').addEventListener('click', async () => {
     const data = await r.json();
     if (data.error) { box.innerHTML = `<div class="err">错误：${data.error}</div>`; meta.textContent=''; return; }
     lastData = data;
+    allRows = data.results;
+    emailFilter = '';
+    document.getElementById('emailFilter').value = '';
+    document.getElementById('filterMeta').textContent = '';
     meta.textContent = `搜索词：${data.query} · 命中 ${data.count} 条`;
-    render(data.results);
+    renderFiltered();
     document.getElementById('export').disabled = data.results.length === 0;
   } catch (e) {
     box.innerHTML = `<div class="err">请求失败：${e}</div>`; meta.textContent='';
@@ -140,24 +154,33 @@ function contactCell(r) {
   if (r.phone) parts.push(`📞 ${r.phone}`);
   if (r.social) parts.push(`🔗 <a href="${r.social}" target="_blank">LinkedIn</a>`);
   if (!parts.length) parts.push('<span style="color:#b0b3b8">点「深挖」抓官网</span>');
-  return parts.join('<br>');
+  const gtag = (r.email || '').toLowerCase().includes('gmail.com')
+    ? ' <span class="tag" style="background:#fde8ff;color:#a028c8">Gmail</span>' : '';
+  return parts.join('<br>') + gtag;
 }
 
 function render(rows) {
-  if (!rows.length) { document.getElementById('result').innerHTML = '<div class="empty">无结果</div>'; return; }
+  if (!rows.length) {
+    const f = emailFilter.trim();
+    document.getElementById('result').innerHTML = f
+      ? `<div class="empty">没有邮箱含「${f}」的结果（可点「深挖」抓官网邮箱后再筛，或「清除」筛选）</div>`
+      : '<div class="empty">无结果</div>';
+    return;
+  }
   let html = '<table><thead><tr><th>公司/网站</th><th>类型</th><th>评分</th><th>联系方式</th><th>备注</th><th>摘要</th><th>操作</th></tr></thead><tbody>';
-  rows.forEach((r, i) => {
+  rows.forEach((r) => {
     const saved = myLeads.some(m => m.url === r.url);
+    const enc = encodeURIComponent(r.url);
     html += `<tr>
       <td><a href="${r.url}" target="_blank">${r.name || r.site || r.url}</a><br><span style="color:#8a8f99;font-size:11px">${r.url}</span></td>
       <td>${r.type}</td>
       <td><span class="tag ${r.score}">${r.score}</span></td>
-      <td class="contact" id="c${i}">${contactCell(r)}</td>
+      <td class="contact" id="c_${enc}">${contactCell(r)}</td>
       <td>${r.note}</td>
       <td style="color:#4e5969">${r.snippet}</td>
       <td>
-        <button class="mini ghost" onclick="saveLead(${i})" ${saved ? 'disabled' : ''}>${saved ? '已存' : '保存'}</button><br>
-        <button class="mini" style="margin-top:6px" onclick="deepContact('${encodeURIComponent(r.url)}',${i})">深挖</button>
+        <button class="mini ghost" onclick="saveLead('${enc}')" ${saved ? 'disabled' : ''}>${saved ? '已存' : '保存'}</button><br>
+        <button class="mini" style="margin-top:6px" onclick="deepContact('${enc}')">深挖</button>
       </td>
     </tr>`;
   });
@@ -165,35 +188,40 @@ function render(rows) {
   document.getElementById('result').innerHTML = html;
 }
 
-async function deepContact(encUrl, i) {
+async function deepContact(encUrl) {
   const url = decodeURIComponent(encUrl);
-  const cell = document.getElementById('c' + i);
-  cell.innerHTML = '<span style="color:#8a8f99">抓取中…</span>';
+  const idx = lastData ? lastData.results.findIndex(x => x.url === url) : -1;
+  const cell = document.getElementById('c_' + encUrl);
+  if (cell) cell.innerHTML = '<span style="color:#8a8f99">抓取中…</span>';
   try {
-    const r = await fetch('/api/contact?url=' + encodeURIComponent(url));
+    const r = await fetch('/api/contact?url=' + encUrl);
     const d = await r.json();
-    const parts = [];
-    (d.emails || []).forEach(e => parts.push(`✉️ <a href="mailto:${e}">${e}</a>`));
-    (d.phones || []).forEach(p => parts.push(`📞 ${p}`));
-    if (d.social) parts.push(`🔗 <a href="${d.social}" target="_blank">LinkedIn</a>`);
-    cell.innerHTML = parts.length ? parts.join('<br>') : '<span style="color:#b0b3b8">未提取到</span>';
+    // 把抓到的联系方式写回数据，便于筛选/导出
+    if (idx >= 0) {
+      const row = lastData.results[idx];
+      row.emails = d.emails || row.emails || [];
+      row.email = (d.emails && d.emails[0]) || row.email;
+      row.phone = (d.phones && d.phones[0]) || row.phone;
+      row.social = d.social || row.social;
+    }
+    if (lastData) renderFiltered();
   } catch (e) {
-    cell.innerHTML = '<span style="color:#d4380d">抓取失败</span>';
+    if (cell) cell.innerHTML = '<span style="color:#d4380d">抓取失败</span>';
   }
 }
 
-function saveLead(i) {
-  if (!lastData || !lastData.results[i]) return;
-  const r = lastData.results[i];
-  if (myLeads.some(m => m.url === r.url)) return;
+function saveLead(encUrl) {
+  const url = decodeURIComponent(encUrl);
+  const r = lastData && lastData.results.find(x => x.url === url);
+  if (!r) return;
+  if (myLeads.some(m => m.url === url)) return;
   myLeads.push({
     name: r.name, url: r.url, type: r.type, score: r.score,
     email: r.email, phone: r.phone, social: r.social, snippet: r.snippet,
     status: '待联系', note: '', savedAt: new Date().toISOString().slice(0, 10)
   });
   saveMy();
-  // 刷新当前表格里的按钮状态
-  if (lastData) render(lastData.results);
+  if (lastData) renderFiltered();
 }
 
 function setStatus(url, v) {
@@ -207,7 +235,7 @@ function setNote(url, v) {
 function removeLead(url) {
   myLeads = myLeads.filter(x => x.url !== url);
   saveMy();
-  if (lastData) render(lastData.results);
+  if (lastData) renderFiltered();
 }
 
 function renderMy() {
@@ -237,14 +265,45 @@ function renderMy() {
 }
 
 document.getElementById('export').addEventListener('click', () => {
-  if (!lastData) return;
+  const rows = getCurrentRows();
+  if (!rows.length) return;
   const head = ['公司名','网址','类型','评分','邮箱','电话','社媒','备注','摘要'];
   const lines = [head.join(',')];
-  lastData.results.forEach(r => {
+  rows.forEach(r => {
     const cells = [r.name, r.url, r.type, r.score, r.email, r.phone, r.social, r.note, r.snippet].map(esc);
     lines.push(cells.join(','));
   });
-  download('﻿' + lines.join('\r\n'), `徽章客户_${lastData.query.slice(0,16)}.csv`);
+  download('﻿' + lines.join('\r\n'), `徽章客户_${emailFilter.trim() ? 'gmail_' : ''}${lastData.query.slice(0,16)}.csv`);
+});
+
+// —— 邮箱/域名筛选 ——
+function getCurrentRows() {
+  const f = emailFilter.trim().toLowerCase();
+  if (!f) return allRows;
+  return allRows.filter(r =>
+    (r.emails && r.emails.some(e => e.toLowerCase().includes(f))) ||
+    (r.email && r.email.toLowerCase().includes(f))
+  );
+}
+function renderFiltered() {
+  const rows = getCurrentRows();
+  const f = emailFilter.trim();
+  document.getElementById('filterMeta').textContent = f ? `（仅显示邮箱含「${f}」的 ${rows.length} 条）` : '';
+  render(rows);
+}
+document.getElementById('emailFilter').addEventListener('input', e => {
+  emailFilter = e.target.value;
+  if (lastData) renderFiltered();
+});
+document.getElementById('onlyGmail').addEventListener('click', () => {
+  emailFilter = 'gmail.com';
+  document.getElementById('emailFilter').value = 'gmail.com';
+  if (lastData) renderFiltered();
+});
+document.getElementById('clearFilter').addEventListener('click', () => {
+  emailFilter = '';
+  document.getElementById('emailFilter').value = '';
+  if (lastData) renderFiltered();
 });
 
 document.getElementById('exportMy').addEventListener('click', () => {
