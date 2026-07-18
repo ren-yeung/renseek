@@ -252,7 +252,7 @@ let managedLeads = [];         // 客户管理库（D1）列表
 let mgrChecked = new Set();    // 管理页已勾选的客户 id
 let editId = null;
 let scoreFilter = 'ALL'; // 当前评分筛选：ALL/A/B/C/D
-let emailFilter = 'ALL'; // 当前联系方式筛选：ALL/HAS_EMAIL
+let emailFilter = 'ALL'; // 当前联系方式筛选：ALL / HAS_EMAIL / NO_EMAIL / EMPTY
 
 // ========== Tab 切换 ==========
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
@@ -426,17 +426,19 @@ function render(rows) {
     return `<option value="${s}"${selected}>${label}</option>`;
   }).join('');
   const allChecked = rows.length > 0 && rows.every(r => devChecked.has(r.url));
-  const hasEmailCount = allRows.filter(r => (r.emails && r.emails.length) || r.email).length;
-  let emailOptions;
-  if (hasEmailCount === 0) {
-    emailOptions = '<option value="ALL" disabled selected>点「深挖」抓官网</option>';
-  } else {
-    emailOptions = ['ALL', 'HAS_EMAIL'].map(s => {
-      const label = s === 'ALL' ? `全部联系方式 (${allRows.length})` : `有邮箱 (${hasEmailCount})`;
-      const selected = emailFilter === s ? ' selected' : '';
-      return `<option value="${s}"${selected}>${label}</option>`;
-    }).join('');
-  }
+  const total = allRows.length;
+  const hasEmailCount = allRows.filter(r => hasEmail(r)).length;
+  const noEmailCount = allRows.filter(r => !hasEmail(r) && (r.phone || r.social)).length;
+  const emptyCount = allRows.filter(r => !hasEmail(r) && !r.phone && !r.social).length;
+  const emailOptions = [
+    { value: 'ALL', label: `全部 (${total})` },
+    { value: 'HAS_EMAIL', label: `有邮箱 (${hasEmailCount})` },
+    { value: 'NO_EMAIL', label: `无邮箱 (${noEmailCount})` },
+    { value: 'EMPTY', label: `点「深挖」抓官网 (${emptyCount})` }
+  ].map(s => {
+    const selected = emailFilter === s.value ? ' selected' : '';
+    return `<option value="${s.value}"${selected}>${s.label}</option>`;
+  }).join('');
   let html = '<div class="table-wrap"><table><colgroup><col style="width:4%"><col style="width:35%"><col style="width:15%"><col style="width:10%"><col style="width:36%"></colgroup><thead><tr><th><input type="checkbox" class="row-check" id="devCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>类型</th><th>评分<select class="score-select" onchange="setScoreFilter(this.value)">' + scoreOptions + '</select></th><th>联系方式<select class="email-select" onchange="setEmailFilter(this.value)">' + emailOptions + '</select></th></tr></thead><tbody>';
   rows.forEach((r) => {
     const enc = encodeURIComponent(r.url);
@@ -477,10 +479,15 @@ function setEmailFilter(s) {
   emailFilter = s;
   applyFilters();
 }
+function hasEmail(r) { return !!(r.emails && r.emails.length) || !!r.email; }
+function hasAnyContact(r) { return hasEmail(r) || !!r.phone || !!r.social; }
+
 function applyFilters() {
   let rows = allRows.slice();
   if (scoreFilter !== 'ALL') rows = rows.filter(r => (r.score || 'D') === scoreFilter);
-  if (emailFilter === 'HAS_EMAIL') rows = rows.filter(r => (r.emails && r.emails.length) || r.email);
+  if (emailFilter === 'HAS_EMAIL') rows = rows.filter(r => hasEmail(r));
+  else if (emailFilter === 'NO_EMAIL') rows = rows.filter(r => !hasEmail(r) && (r.phone || r.social));
+  else if (emailFilter === 'EMPTY') rows = rows.filter(r => !hasEmail(r) && !r.phone && !r.social);
   visibleRows = rows;
   render(visibleRows);
 }
