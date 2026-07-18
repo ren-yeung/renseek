@@ -296,7 +296,6 @@ function render(rows) {
     const enc = encodeURIComponent(r.url);
     const checked = devChecked.has(r.url) ? ' checked' : '';
     const imported = importedSet.has(r.url);
-    const imported = importedSet.has(r.url);
     html += `<tr>
       <td><input type="checkbox" class="row-check" data-url="${enc}"${checked}></td>
       <td><a href="${escHtml(r.url)}" target="_blank">${escHtml(r.name || r.site || r.url)}</a>${imported ? ' <span class="tag" style="background:#e8ffea;color:#009a29">已导入</span>' : ''}<br><span style="color:#8a8f99;font-size:11px">${escHtml(r.url)}</span></td>
