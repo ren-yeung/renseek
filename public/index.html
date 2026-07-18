@@ -234,6 +234,8 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
 }));
 
 // ========== 搜索（客户开发）==========
+function hasChinese(s) { return /[\u4e00-\u9fa5]/.test(s || ''); }
+
 function refreshQuery() {
   const p = document.getElementById('product').value;
   const c = document.getElementById('country').value;
@@ -246,6 +248,39 @@ function refreshQuery() {
 refreshQuery();
 
 document.getElementById('go').addEventListener('click', async () => {
+  const meta = document.getElementById('meta');
+  const box = document.getElementById('result');
+  const productInput = document.getElementById('product');
+  const countryInput = document.getElementById('country');
+  const excludeInput = document.getElementById('exclude');
+  const n = document.getElementById('n').value;
+
+  meta.textContent = '准备搜索…'; box.innerHTML = '';
+
+  // 如果关键字段包含中文，先调 /api/translate 翻译成英文
+  if (hasChinese(productInput.value) || hasChinese(countryInput.value) || hasChinese(excludeInput.value)) {
+    meta.textContent = '检测到中文，正在翻译…';
+    try {
+      const tr = await fetch('/api/translate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product: productInput.value, country: countryInput.value, exclude: excludeInput.value })
+      });
+      const td = await tr.json();
+      if (td.error) { box.innerHTML = `<div class="err">翻译失败：${escHtml(td.error)}</div>`; meta.textContent = ''; return; }
+      productInput.value = td.product;
+      countryInput.value = td.country;
+      excludeInput.value = td.exclude;
+      refreshQuery();
+      meta.textContent = `已翻译：${td.product} · ${td.country}${td.exclude ? '（排除：' + td.exclude + '）' : ''}`;
+    } catch (e) {
+      box.innerHTML = `<div class="err">翻译请求失败：${e}</div>`; meta.textContent = ''; return;
+    }
+  }
+
+  await doSearch();
+});
+
+async function doSearch() {
   const product = document.getElementById('product').value;
   const country = document.getElementById('country').value;
   const exclude = document.getElementById('exclude').value;
@@ -266,7 +301,7 @@ document.getElementById('go').addEventListener('click', async () => {
   } catch (e) {
     box.innerHTML = `<div class="err">请求失败：${e}</div>`; meta.textContent='';
   }
-});
+}
 
 // ========== 联系方式单元格 ==========
 function contactCell(r) {
