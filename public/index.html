@@ -157,8 +157,8 @@
     </div>
 
     <div class="row" style="margin-top:12px">
-      <button class="mini" id="batchImport" style="background:#165dff;color:#fff">批量导入</button>
-      <button class="mini" id="batchDeep" style="background:#00a76f;color:#fff;margin-left:8px">批量深挖 A/B 类</button>
+      <button class="mini" id="batchImport" style="background:#165dff;color:#fff">导入</button>
+      <button class="mini" id="batchDeep" style="background:#00a76f;color:#fff;margin-left:8px">深挖</button>
       <span class="meta" id="filterMeta" style="margin-left:6px"></span>
     </div>
 
@@ -485,18 +485,19 @@ async function deepContact(encUrl) {
   }
 }
 
-// 批量深挖 A/B 类
+// 批量深挖（不限类型）
 async function batchDeepAB() {
   if (!lastData) return;
-  const targets = visibleRows.filter(r => devChecked.has(r.url) && (r.score === 'A' || r.score === 'B'));
-  if (!targets.length) { alert('请先勾选要深挖的 A/B 类客户'); return; }
+  const targets = visibleRows.filter(r => devChecked.has(r.url));
+  if (!targets.length) { alert('请先勾选要深挖的客户'); return; }
   const aCount = targets.filter(r => r.score === 'A').length;
   const bCount = targets.filter(r => r.score === 'B').length;
+  const dCount = targets.filter(r => r.score === 'D').length;
   const btn = document.getElementById('batchDeep');
   const meta = document.getElementById('filterMeta');
   const total = targets.length; let done = 0, emailHits = 0, mxOk = 0;
   btn.disabled = true; applyScoreFilter();
-  meta.textContent = '批量深挖中 0/' + total + ' …';
+  meta.textContent = '深挖中 0/' + total + ' …';
   const CONC = 3; let cursor = 0;
   async function worker() {
     while (cursor < targets.length) {
@@ -521,7 +522,7 @@ async function batchDeepAB() {
         }
       } catch (e) { if (cell) cell.innerHTML = '<span style="color:#d4380d">抓取失败</span>'; }
       done++;
-      meta.textContent = '批量深挖中 ' + done + '/' + total + ' · 已抓到邮箱 ' + emailHits + ' · 可收信 ' + mxOk;
+      meta.textContent = '深挖中 ' + done + '/' + total + ' · 已抓到邮箱 ' + emailHits + ' · 可收信 ' + mxOk;
     }
   }
   const pool = [];
@@ -531,7 +532,7 @@ async function batchDeepAB() {
   applyScoreFilter();
   const cov = total ? Math.round(emailHits / total * 100) : 0;
   const mxCov = total ? Math.round(mxOk / total * 100) : 0;
-  meta.textContent = `批量深挖完成：A ${aCount} + B ${bCount} 共 ${total} 条 → 抓到邮箱 ${emailHits}（${cov}%）、可收信 ${mxOk}（${mxCov}%）`;
+  meta.textContent = `深挖完成：共 ${total} 条（A ${aCount} / B ${bCount} / D ${dCount}）→ 抓到邮箱 ${emailHits}（${cov}%）、可收信 ${mxOk}（${mxCov}%）`;
 }
 
 // ========== 导入客户到管理库（D1）==========
@@ -571,7 +572,7 @@ async function batchImport() {
   const btn = document.getElementById('batchImport');
   const meta = document.getElementById('filterMeta');
   const total = targets.length; let done = 0, ok = 0;
-  btn.disabled = true; meta.textContent = `批量导入中 0/${total} 条…`;
+  btn.disabled = true; meta.textContent = `导入中 0/${total} 条…`;
   const CONC = 3; let cursor = 0;
   async function worker() {
     while (cursor < targets.length) {
@@ -589,7 +590,7 @@ async function batchImport() {
         if (!d.error) { importedSet.add(r.url); ok++; }
       } catch {}
       done++;
-      meta.textContent = `批量导入中 ${done}/${total} 条 · 成功 ${ok} 条`;
+      meta.textContent = `导入中 ${done}/${total} 条 · 成功 ${ok} 条`;
     }
   }
   const pool = [];
@@ -598,7 +599,7 @@ async function batchImport() {
   btn.disabled = false;
   applyScoreFilter();
   loadLeads();
-  const parts = [`批量导入完成：勾选 ${checked.length} 条`];
+  const parts = [`导入完成：勾选 ${checked.length} 条`];
   if (skipped) parts.push(`跳过已导入 ${skipped} 条`);
   parts.push(`新导入成功 ${ok}/${total} 条`);
   meta.textContent = parts.join('，');
