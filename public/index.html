@@ -739,7 +739,7 @@ function openDraft(lead) {
   draftRow = lead;
   document.getElementById('draftTitle').textContent = 'AI 开发信 · ' + (lead.name || lead.url);
   const emails = (lead.emails && lead.emails.length) ? lead.emails : (lead.email ? [lead.email] : []);
-  const emailHint = emails.length ? `收件邮箱：${emails.join(', ')}` : '暂无邮箱，需先深挖获取';
+  const emailHint = emails.length ? `收件邮箱（将分别单独发送）：${emails.join(', ')}` : '暂无邮箱，需先深挖获取';
   document.getElementById('draftSub').textContent = lead.url + (emails.length ? ` · ${emails.length} 个邮箱` : '');
   const subj = lead.draft_subject || (lead.draft && lead.draft.subject) || '';
   const body = lead.draft_body || (lead.draft && lead.draft.body) || '';
@@ -801,13 +801,16 @@ document.getElementById('draftGmail').addEventListener('click', () => {
 });
 
 // 云端发送：通过 Cloudflare Pages Function + Resend 发邮件（无需本机 Gmail）
+// 每个邮箱单独发送一封，互不暴露对方地址，且可在 Resend 后台逐封核对
 document.getElementById('draftResend').addEventListener('click', async () => {
   if (!draftRow) return;
-  const emails = (draftRow.emails && draftRow.emails.length) ? draftRow.emails : (draftRow.email ? [draftRow.email] : []);
+  let emails = (draftRow.emails && draftRow.emails.length) ? draftRow.emails.slice() : (draftRow.email ? [draftRow.email] : []);
+  // 去重 + 清理
+  emails = Array.from(new Set(emails.map(e => (e || '').trim().toLowerCase()).filter(Boolean)));
   if (!emails.length) { document.getElementById('draftHint').textContent = '该客户还没有邮箱，先点「深挖」抓官网邮箱再发送。'; return; }
   const btn = document.getElementById('draftResend');
   const hint = document.getElementById('draftHint');
-  btn.disabled = true; btn.textContent = '发送中…'; hint.textContent = '';
+  btn.disabled = true; btn.textContent = '发送中…'; hint.textContent = '共 ' + emails.length + ' 个邮箱，逐封发送中…';
   try {
     const subject = document.getElementById('draftSubject').value;
     const bodyText = document.getElementById('draftBody').value;
@@ -815,13 +818,26 @@ document.getElementById('draftResend').addEventListener('click', async () => {
     const html = bodyText.replace(/\n/g, '<br>');
     const from = document.getElementById('draftFrom').value.trim() || 'Renseek <hello@kuajing.space>';
     const replyTo = document.getElementById('draftReplyTo').value.trim() || 'ycr13120902436@gmail.com';
-    const r = await fetch('/api/send', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: emails, subject, html, text: bodyText, from, replyTo })
-    });
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    hint.textContent = '✅ 已发送给 ' + emails.length + ' 个邮箱，Resend ID：' + d.id;
+    let ok = 0; const fails = [];
+    for (let i = 0; i < emails.length; i++) {
+      const to = emails[i];
+      hint.textContent = '发送中 ' + (i + 1) + '/' + emails.length + ' · ' + to;
+      try {
+        const r = await fetch('/api/send', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: [to], subject, html, text: bodyText, from, replyTo })
+        });
+        const d = await r.json();
+        if (d.error) { fails.push(to + '：' + d.error); } else { ok++; }
+      } catch (e) {
+        fails.push(to + '：' + e.message);
+      }
+    }
+    if (fails.length) {
+      hint.textContent = '已发送 ' + ok + '/' + emails.length + ' 个邮箱；失败：' + fails.join('；');
+    } else {
+      hint.textContent = '✅ 已分别发送给全部 ' + emails.length + ' 个邮箱';
+    }
 
     // 回写客户管理库（管理库客户有 id）
     if (draftRow.id) {
