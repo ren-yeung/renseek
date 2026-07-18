@@ -151,8 +151,11 @@ function contactCell(r) {
   if (r.social) parts.push(`🔗 <a href="${r.social}" target="_blank">LinkedIn</a>`);
   if (!parts.length) parts.push('<span style="color:#b0b3b8">点「深挖」抓官网</span>');
   let mxTag = '';
-  if (r.mx === true) mxTag = ' <span class="tag" style="background:#e8ffea;color:#009a29">✅可收信</span>';
-  else if (r.mx === false) mxTag = ' <span class="tag" style="background:#fff1e8;color:#d4380d">无MX</span>';
+  // 只有在抓到了邮箱时，MX 标签才有意义
+  if (emails.length) {
+    if (r.mx === true) mxTag = ' <span class="tag" style="background:#e8ffea;color:#009a29">✅可收信</span>';
+    else if (r.mx === false) mxTag = ' <span class="tag" style="background:#fff1e8;color:#d4380d">无MX</span>';
+  }
   return parts.join('<br>') + mxTag;
 }
 
