@@ -57,6 +57,10 @@
   .tab:not(.active) .cnt { background:#e5e6eb; color:#4e5969; }
   .ops { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
   .ops button { margin:0; }
+  .score-filters { display:inline-flex; gap:4px; margin-left:6px; vertical-align:middle; }
+  .score-filters button { padding:2px 7px; font-size:11px; border-radius:10px; background:#f2f3f5; color:#4e5969; border:1px solid #e5e6eb; }
+  .score-filters button.active { background:#165dff; color:#fff; border-color:#165dff; }
+  .score-filters button:disabled { opacity:.6; }
   #editMask .form { margin:0; }
   #editMask .form input, #editMask .form textarea { margin-bottom:4px; }
 </style>
@@ -121,8 +125,8 @@
     </div>
 
     <div class="row" style="margin-top:12px">
-      <button class="mini" id="batchDeep" style="background:#00a76f;color:#fff">批量深挖 A/B 类（官网邮箱+验MX；A 额外反向搜邮）</button>
-      <button class="mini" id="batchDraft" style="background:#7c3aed;color:#fff;margin-left:8px">批量生成开发信（A/B）</button>
+      <button class="mini" id="batchImport" style="background:#165dff;color:#fff">批量导入</button>
+      <button class="mini" id="batchDeep" style="background:#00a76f;color:#fff;margin-left:8px">批量深挖 A/B 类</button>
       <span class="meta" id="filterMeta" style="margin-left:6px"></span>
     </div>
 
@@ -200,9 +204,11 @@
 // ---------- 全局状态 ----------
 let lastData = null;
 let allRows = [];          // 最近一次搜索的全部结果
+let visibleRows = [];      // 当前评分筛选后的结果
 let importedSet = new Set();   // 已导入到管理库的 url 集合
 let managedLeads = [];         // 客户管理库（D1）列表
 let editId = null;
+let scoreFilter = new Set(['A','B','C','D']); // 当前显示的评分
 
 // ========== Tab 切换 ==========
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
@@ -242,7 +248,7 @@ document.getElementById('go').addEventListener('click', async () => {
     lastData = data; allRows = data.results;
     document.getElementById('filterMeta').textContent = '';
     meta.textContent = `搜索词：${data.query} · 命中 ${data.count} 条`;
-    render(allRows);
+    applyScoreFilter();
     document.getElementById('export').disabled = data.results.length === 0;
   } catch (e) {
     box.innerHTML = `<div class="err">请求失败：${e}</div>`; meta.textContent='';
@@ -268,7 +274,14 @@ function contactCell(r) {
 
 function render(rows) {
   if (!rows.length) { document.getElementById('result').innerHTML = '<div class="empty">无结果</div>'; return; }
-  let html = '<table><thead><tr><th>公司/网站</th><th>类型</th><th>评分</th><th>联系方式</th><th>操作</th></tr></thead><tbody>';
+  const scoreCounts = {A:0,B:0,C:0,D:0};
+  allRows.forEach(r => { scoreCounts[r.score||'D'] = (scoreCounts[r.score||'D']||0)+1; });
+  const scoreFilters = ['A','B','C','D'].map(s => {
+    const active = scoreFilter.has(s);
+    const count = scoreCounts[s] || 0;
+    return `<button class="${active?'active':''}" onclick="toggleScore('${s}')" ${count===0?'disabled':''}>${s} (${count})</button>`;
+  }).join('');
+  let html = '<table><thead><tr><th>公司/网站</th><th>类型</th><th>评分<div class="score-filters">' + scoreFilters + '</div></th><th>联系方式</th><th>导入客户</th><th>深挖</th><th>操作</th></tr></thead><tbody>';
   rows.forEach((r) => {
     const enc = encodeURIComponent(r.url);
     const imported = importedSet.has(r.url);
@@ -277,15 +290,23 @@ function render(rows) {
       <td>${escHtml(r.type || '')}</td>
       <td><span class="tag ${r.score}">${r.score}</span></td>
       <td class="contact" id="c_${enc}">${contactCell(r)}</td>
-      <td class="ops">
-        <button class="mini ${imported ? '' : 'ghost'}" onclick="importLead(this, '${enc}')" ${imported ? 'disabled' : ''}>${imported ? '已导入' : '导入客户'}</button>
-        <button class="mini" onclick="deepContact('${enc}')">深挖</button>
-        <button class="mini ghost" style="color:#00a76f;border-color:#00a76f" onclick="openDraftByUrl('${enc}')">开发信</button>
-      </td>
+      <td><button class="mini ${imported ? '' : 'ghost'}" onclick="importLead(this, '${enc}')" ${imported ? 'disabled' : ''}>${imported ? '已导入' : '导入'}</button></td>
+      <td><button class="mini" onclick="deepContact('${enc}')">深挖</button></td>
+      <td class="ops"><button class="mini ghost" style="color:#00a76f;border-color:#00a76f" onclick="openDraftByUrl('${enc}')">开发信</button></td>
     </tr>`;
   });
   html += '</tbody></table>';
   document.getElementById('result').innerHTML = html;
+}
+
+function toggleScore(s) {
+  if (scoreFilter.has(s)) scoreFilter.delete(s); else scoreFilter.add(s);
+  if (scoreFilter.size === 0) { scoreFilter = new Set(['A','B','C','D']); }
+  applyScoreFilter();
+}
+function applyScoreFilter() {
+  visibleRows = allRows.filter(r => scoreFilter.has(r.score || 'D'));
+  render(visibleRows);
 }
 
 async function deepContact(encUrl) {
@@ -304,7 +325,7 @@ async function deepContact(encUrl) {
       row.social = d.social || row.social;
       row.mx = d.mx; row.mxHost = d.mxHost;
     }
-    if (lastData) render(allRows);
+    if (lastData) applyScoreFilter();
   } catch (e) {
     if (cell) cell.innerHTML = '<span style="color:#d4380d">抓取失败</span>';
   }
@@ -313,14 +334,14 @@ async function deepContact(encUrl) {
 // 批量深挖 A/B 类
 async function batchDeepAB() {
   if (!lastData) return;
-  const targets = lastData.results.filter(r => r.score === 'A' || r.score === 'B');
-  if (!targets.length) { alert('没有 A/B 类客户可深挖（先搜索一次）'); return; }
+  const targets = visibleRows.filter(r => r.score === 'A' || r.score === 'B');
+  if (!targets.length) { alert('当前筛选后没有 A/B 类客户可深挖'); return; }
   const aCount = targets.filter(r => r.score === 'A').length;
   const bCount = targets.filter(r => r.score === 'B').length;
   const btn = document.getElementById('batchDeep');
   const meta = document.getElementById('filterMeta');
   const total = targets.length; let done = 0, emailHits = 0, mxOk = 0;
-  btn.disabled = true; render(allRows);
+  btn.disabled = true; applyScoreFilter();
   meta.textContent = '批量深挖中 0/' + total + ' …';
   const CONC = 3; let cursor = 0;
   async function worker() {
@@ -353,6 +374,7 @@ async function batchDeepAB() {
   for (let k = 0; k < Math.min(CONC, total); k++) pool.push(worker());
   await Promise.all(pool);
   btn.disabled = false;
+  applyScoreFilter();
   const cov = total ? Math.round(emailHits / total * 100) : 0;
   const mxCov = total ? Math.round(mxOk / total * 100) : 0;
   meta.textContent = `批量深挖完成：A ${aCount} + B ${bCount} 共 ${total} 条 → 抓到邮箱 ${emailHits}（${cov}%）、可收信 ${mxOk}（${mxCov}%）`;
@@ -374,13 +396,50 @@ async function importLead(btn, encUrl) {
       })
     });
     const d = await resp.json();
-    if (d.error) { alert('导入失败：' + d.error); btn.disabled = false; btn.textContent = '导入客户'; return; }
+    if (d.error) { alert('导入失败：' + d.error); btn.disabled = false; btn.textContent = '导入'; return; }
     importedSet.add(url);
     btn.textContent = '已导入'; btn.classList.remove('ghost');
     loadLeads();
   } catch (e) {
-    alert('导入失败：' + e); btn.disabled = false; btn.textContent = '导入客户';
+    alert('导入失败：' + e); btn.disabled = false; btn.textContent = '导入';
   }
+}
+
+async function batchImport() {
+  if (!lastData) return;
+  const targets = visibleRows.filter(r => !importedSet.has(r.url));
+  if (!targets.length) { alert('当前没有未导入的客户'); return; }
+  const btn = document.getElementById('batchImport');
+  const meta = document.getElementById('filterMeta');
+  const total = targets.length; let done = 0, ok = 0;
+  btn.disabled = true; meta.textContent = '批量导入中 0/' + total + ' …';
+  const CONC = 3; let cursor = 0;
+  async function worker() {
+    while (cursor < targets.length) {
+      const r = targets[cursor++];
+      try {
+        const resp = await fetch('/api/leads', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: r.name, url: r.url, domain: r.domain, type: r.type, score: r.score,
+            email: r.email, emails: r.emails || (r.email ? [r.email] : []),
+            phone: r.phone, social: r.social, mx: r.mx, snippet: r.snippet
+          })
+        });
+        const d = await resp.json();
+        if (!d.error) { importedSet.add(r.url); ok++; }
+      } catch {}
+      done++;
+      meta.textContent = '批量导入中 ' + done + '/' + total + ' · 成功 ' + ok;
+    }
+  }
+  const pool = [];
+  for (let k = 0; k < Math.min(CONC, total); k++) pool.push(worker());
+  await Promise.all(pool);
+  btn.disabled = false;
+  applyScoreFilter();
+  loadLeads();
+  meta.textContent = `批量导入完成：${total} 条 → 成功 ${ok} 条`;
 }
 
 // ========== 客户管理库（D1）==========
@@ -531,8 +590,8 @@ document.getElementById('mgrExport').addEventListener('click', () => {
 });
 
 // 绑定批量按钮
+document.getElementById('batchImport').addEventListener('click', batchImport);
 document.getElementById('batchDeep').addEventListener('click', batchDeepAB);
-document.getElementById('batchDraft').addEventListener('click', batchDraft);
 
 // 当前结果导出 CSV
 document.getElementById('export').addEventListener('click', () => {
@@ -630,7 +689,7 @@ document.getElementById('draftGen').addEventListener('click', async () => {
     document.getElementById('draftBody').value = d.body || '';
     draftRow.draft = { subject: d.subject, body: d.body };
     hint.textContent = '已生成，可手动微调后发送 / 复制。';
-    if (lastData) render(allRows);
+    if (lastData) applyScoreFilter();
   } catch (e) {
     hint.textContent = '生成失败：' + e.message;
   } finally {
@@ -694,28 +753,6 @@ document.getElementById('draftResend').addEventListener('click', async () => {
     btn.disabled = false; btn.textContent = '云端发送';
   }
 });
-
-// 批量生成开发信（A/B 类），缓存到 row.draft，随后可导出含开发信的 CSV
-async function batchDraft() {
-  if (!lastData) return;
-  const targets = lastData.results.filter(r => r.score === 'A' || r.score === 'B');
-  if (!targets.length) { alert('没有 A/B 类客户（先搜索一次）'); return; }
-  const btn = document.getElementById('batchDraft');
-  const meta = document.getElementById('filterMeta');
-  const total = targets.length; let done = 0, ok = 0;
-  btn.disabled = true; meta.textContent = '批量生成开发信 0/' + total + ' …';
-  for (const r of targets) {
-    try {
-      const d = await genOneDraft(r);
-      if (d.subject) { r.draft = { subject: d.subject, body: d.body }; ok++; }
-    } catch {}
-    done++;
-    meta.textContent = '批量生成开发信 ' + done + '/' + total + ' · 成功 ' + ok;
-  }
-  btn.disabled = false;
-  if (lastData) render(allRows);
-  meta.textContent = `批量生成完成：${total} 条 → 成功 ${ok} 封开发信（已缓存，可导出含开发信的 CSV）`;
-}
 
 // 页面加载时拉一次管理库计数（不显示列表，仅填充 Tab 角标 + 已导入标记）
 loadLeads();
