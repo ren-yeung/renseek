@@ -67,6 +67,7 @@
   .ops { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
   .ops button { margin:0; }
   .score-select { padding:2px 6px; font-size:12px; border-radius:6px; border:1px solid #d0d3d9; margin-left:6px; }
+  .email-select { padding:2px 6px; font-size:12px; border-radius:6px; border:1px solid #d0d3d9; margin-left:6px; max-width: 160px; }
   .row-check { width:16px; height:16px; cursor:pointer; }
   #editMask .form { margin:0; }
   #editMask .form input, #editMask .form textarea { margin-bottom:4px; }
@@ -251,6 +252,7 @@ let managedLeads = [];         // 客户管理库（D1）列表
 let mgrChecked = new Set();    // 管理页已勾选的客户 id
 let editId = null;
 let scoreFilter = 'ALL'; // 当前评分筛选：ALL/A/B/C/D
+let emailFilter = 'ALL'; // 当前联系方式筛选：ALL/HAS_EMAIL
 
 // ========== Tab 切换 ==========
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
@@ -386,9 +388,11 @@ async function doSearch() {
     const data = await r.json();
     if (data.error) { box.innerHTML = `<div class="err">错误：${escHtml(data.error)}</div>`; meta.textContent=''; return; }
     lastData = data; allRows = data.results;
+    scoreFilter = 'ALL';
+    emailFilter = 'ALL';
     document.getElementById('filterMeta').textContent = '';
     meta.textContent = `搜索词：${data.query} · 命中 ${data.count} 条`;
-    applyScoreFilter();
+    applyFilters();
     document.getElementById('export').disabled = data.results.length === 0;
   } catch (e) {
     box.innerHTML = `<div class="err">请求失败：${e}</div>`; meta.textContent='';
@@ -422,7 +426,18 @@ function render(rows) {
     return `<option value="${s}"${selected}>${label}</option>`;
   }).join('');
   const allChecked = rows.length > 0 && rows.every(r => devChecked.has(r.url));
-  let html = '<div class="table-wrap"><table><colgroup><col style="width:4%"><col style="width:35%"><col style="width:15%"><col style="width:10%"><col style="width:36%"></colgroup><thead><tr><th><input type="checkbox" class="row-check" id="devCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>类型</th><th>评分<select class="score-select" onchange="setScoreFilter(this.value)">' + scoreOptions + '</select></th><th>联系方式</th></tr></thead><tbody>';
+  const hasEmailCount = allRows.filter(r => (r.emails && r.emails.length) || r.email).length;
+  let emailOptions;
+  if (hasEmailCount === 0) {
+    emailOptions = '<option value="ALL" disabled selected>点「深挖」抓官网</option>';
+  } else {
+    emailOptions = ['ALL', 'HAS_EMAIL'].map(s => {
+      const label = s === 'ALL' ? `全部联系方式 (${allRows.length})` : `有邮箱 (${hasEmailCount})`;
+      const selected = emailFilter === s ? ' selected' : '';
+      return `<option value="${s}"${selected}>${label}</option>`;
+    }).join('');
+  }
+  let html = '<div class="table-wrap"><table><colgroup><col style="width:4%"><col style="width:35%"><col style="width:15%"><col style="width:10%"><col style="width:36%"></colgroup><thead><tr><th><input type="checkbox" class="row-check" id="devCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>类型</th><th>评分<select class="score-select" onchange="setScoreFilter(this.value)">' + scoreOptions + '</select></th><th>联系方式<select class="email-select" onchange="setEmailFilter(this.value)">' + emailOptions + '</select></th></tr></thead><tbody>';
   rows.forEach((r) => {
     const enc = encodeURIComponent(r.url);
     const checked = devChecked.has(r.url) ? ' checked' : '';
@@ -456,10 +471,17 @@ function toggleDevCheckAll(e) {
 
 function setScoreFilter(s) {
   scoreFilter = s;
-  applyScoreFilter();
+  applyFilters();
 }
-function applyScoreFilter() {
-  visibleRows = scoreFilter === 'ALL' ? allRows.slice() : allRows.filter(r => (r.score || 'D') === scoreFilter);
+function setEmailFilter(s) {
+  emailFilter = s;
+  applyFilters();
+}
+function applyFilters() {
+  let rows = allRows.slice();
+  if (scoreFilter !== 'ALL') rows = rows.filter(r => (r.score || 'D') === scoreFilter);
+  if (emailFilter === 'HAS_EMAIL') rows = rows.filter(r => (r.emails && r.emails.length) || r.email);
+  visibleRows = rows;
   render(visibleRows);
 }
 
@@ -479,7 +501,7 @@ async function deepContact(encUrl) {
       row.social = d.social || row.social;
       row.mx = d.mx; row.mxHost = d.mxHost;
     }
-    if (lastData) applyScoreFilter();
+    if (lastData) applyFilters();
   } catch (e) {
     if (cell) cell.innerHTML = '<span style="color:#d4380d">抓取失败</span>';
   }
@@ -496,7 +518,7 @@ async function batchDeepAB() {
   const btn = document.getElementById('batchDeep');
   const meta = document.getElementById('filterMeta');
   const total = targets.length; let done = 0, emailHits = 0, mxOk = 0;
-  btn.disabled = true; applyScoreFilter();
+  btn.disabled = true; applyFilters();
   meta.textContent = '深挖中 0/' + total + ' …';
   const CONC = 3; let cursor = 0;
   async function worker() {
@@ -529,7 +551,7 @@ async function batchDeepAB() {
   for (let k = 0; k < Math.min(CONC, total); k++) pool.push(worker());
   await Promise.all(pool);
   btn.disabled = false;
-  applyScoreFilter();
+  applyFilters();
   const cov = total ? Math.round(emailHits / total * 100) : 0;
   const mxCov = total ? Math.round(mxOk / total * 100) : 0;
   meta.textContent = `深挖完成：共 ${total} 条（A ${aCount} / B ${bCount} / D ${dCount}）→ 抓到邮箱 ${emailHits}（${cov}%）、可收信 ${mxOk}（${mxCov}%）`;
@@ -597,7 +619,7 @@ async function batchImport() {
   for (let k = 0; k < Math.min(CONC, total); k++) pool.push(worker());
   await Promise.all(pool);
   btn.disabled = false;
-  applyScoreFilter();
+  applyFilters();
   loadLeads();
   const parts = [`导入完成：勾选 ${checked.length} 条`];
   if (skipped) parts.push(`跳过已导入 ${skipped} 条`);
@@ -906,7 +928,7 @@ document.getElementById('draftGen').addEventListener('click', async () => {
     document.getElementById('draftBody').value = d.body || '';
     draftRow.draft = { subject: d.subject, body: d.body };
     hint.textContent = '已生成，可手动微调后发送 / 复制。';
-    if (lastData) applyScoreFilter();
+    if (lastData) applyFilters();
   } catch (e) {
     hint.textContent = '生成失败：' + e.message;
   } finally {
