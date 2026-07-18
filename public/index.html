@@ -137,6 +137,8 @@
     <input id="draftSubject" placeholder="生成后自动填充，可手动修改" />
     <label>发件邮箱（可选，默认 hello@kuajing.space）</label>
     <input id="draftFrom" placeholder="如 PinCraft <noreply@kuajing.space>" />
+    <label>回复接收邮箱（Reply-To，客户点回复会发到这里）</label>
+    <input id="draftReplyTo" value="ycr13120902436@gmail.com" placeholder="如 ycr13120902436@gmail.com" />
     <label>正文</label>
     <textarea id="draftBody" placeholder="点「生成开发信」由 DeepSeek 撰写…"></textarea>
     <div class="acts">
@@ -533,10 +535,11 @@ document.getElementById('draftResend').addEventListener('click', async () => {
     if (!subject || !bodyText) { throw new Error('主题或正文为空'); }
     const html = bodyText.replace(/\n/g, '<br>');
     const from = document.getElementById('draftFrom').value.trim() || 'Renseek <hello@kuajing.space>';
+    const replyTo = document.getElementById('draftReplyTo').value.trim() || 'ycr13120902436@gmail.com';
     const r = await fetch('/api/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: email, subject, html, text: bodyText, from })
+      body: JSON.stringify({ to: email, subject, html, text: bodyText, from, replyTo })
     });
     const d = await r.json();
     if (d.error) throw new Error(d.error);

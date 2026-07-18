@@ -26,9 +26,12 @@ export async function onRequest(context) {
     return jsonError('缺少 to / subject / html|text', 400);
   }
 
-  // 默认发件人：hello@kuajing.space，允许前端自定义
+  // 默认发件人：必须用已在 Resend 验证的根域 kuajing.space；允许前端自定义
   const defaultFrom = 'Renseek <hello@kuajing.space>';
   const finalFrom = from || defaultFrom;
+  // 默认回复地址：客户点回复会进这个真实收件箱（kuajing.space 本身无收信能力）
+  const defaultReplyTo = 'ycr13120902436@gmail.com';
+  const finalReplyTo = replyTo || defaultReplyTo;
   const finalTo = Array.isArray(to) ? to : [to];
 
   // 把裸 HTML 包装成完整 UTF-8 文档，避免 163/Outlook 等客户端用 GBK 解码中文乱码
@@ -38,9 +41,9 @@ export async function onRequest(context) {
     from: finalFrom,
     to: finalTo,
     subject,
+    reply_to: finalReplyTo,
     ...(finalHtml ? { html: finalHtml } : {}),
-    ...(text ? { text } : {}),
-    ...(replyTo ? { reply_to: replyTo } : {})
+    ...(text ? { text } : {})
   };
 
   try {
