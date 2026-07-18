@@ -86,6 +86,7 @@
     <input id="emailFilter" placeholder="如 gmail.com，留空=显示全部" style="padding:8px 11px;border:1px solid #d0d3d9;border-radius:7px;font-size:13px;width:220px" />
     <button class="ghost mini" id="onlyGmail">仅 gmail.com</button>
     <button class="ghost mini" id="clearFilter">清除</button>
+    <button class="mini" id="batchDeep" style="margin-left:8px;background:#00a76f;color:#fff">批量深挖A类→筛gmail</button>
     <span class="meta" id="filterMeta" style="margin-left:6px"></span>
   </div>
 
@@ -210,6 +211,63 @@ async function deepContact(encUrl) {
   }
 }
 
+// 批量深挖所有 A 类客户，抓完官网邮箱后自动筛出 gmail.com
+async function batchDeepGmail() {
+  if (!lastData) return;
+  const targets = lastData.results.filter(r => r.score === 'A');
+  if (!targets.length) { alert('没有 A 类客户可深挖（先搜索一次）'); return; }
+  const btn = document.getElementById('batchDeep');
+  const meta = document.getElementById('filterMeta');
+  const total = targets.length;
+  let done = 0, gmailCount = 0;
+  btn.disabled = true;
+  // 先清空筛选并全量渲染，确保所有目标行都在 DOM 中可实时更新
+  emailFilter = '';
+  document.getElementById('emailFilter').value = '';
+  renderFiltered();
+  meta.textContent = '批量深挖中 0/' + total + ' …';
+  const CONC = 3;
+  let cursor = 0;
+  async function worker() {
+    while (cursor < targets.length) {
+      const r = targets[cursor++];
+      const enc = encodeURIComponent(r.url);
+      const cell = document.getElementById('c_' + enc);
+      if (cell) cell.innerHTML = '<span style="color:#8a8f99">抓取中…</span>';
+      try {
+        const resp = await fetch('/api/contact?url=' + enc);
+        const d = await resp.json();
+        const row = lastData.results.find(x => x.url === r.url);
+        if (row) {
+          row.emails = d.emails || row.emails || [];
+          row.email = (d.emails && d.emails[0]) || row.email;
+          row.phone = (d.phones && d.phones[0]) || row.phone;
+          row.social = d.social || row.social;
+          if (cell) cell.innerHTML = contactCell(row);
+          const hasGmail = row.emails.some(e => e.toLowerCase().includes('gmail.com')) ||
+                           (row.email || '').toLowerCase().includes('gmail.com');
+          if (hasGmail) gmailCount++;
+        } else if (cell) {
+          cell.innerHTML = '<span style="color:#d4380d">数据缺失</span>';
+        }
+      } catch (e) {
+        if (cell) cell.innerHTML = '<span style="color:#d4380d">抓取失败</span>';
+      }
+      done++;
+      meta.textContent = '批量深挖中 ' + done + '/' + total + ' …（已发现 gmail ' + gmailCount + '）';
+    }
+  }
+  const pool = [];
+  for (let k = 0; k < Math.min(CONC, total); k++) pool.push(worker());
+  await Promise.all(pool);
+  // 完成后自动应用 gmail 筛选
+  emailFilter = 'gmail.com';
+  document.getElementById('emailFilter').value = 'gmail.com';
+  renderFiltered();
+  btn.disabled = false;
+  meta.textContent = '批量深挖完成：' + total + ' 条 A 类，其中 ' + gmailCount + ' 条含 gmail.com（已自动筛选）';
+}
+
 function saveLead(encUrl) {
   const url = decodeURIComponent(encUrl);
   const r = lastData && lastData.results.find(x => x.url === url);
@@ -305,6 +363,7 @@ document.getElementById('clearFilter').addEventListener('click', () => {
   document.getElementById('emailFilter').value = '';
   if (lastData) renderFiltered();
 });
+document.getElementById('batchDeep').addEventListener('click', batchDeepGmail);
 
 document.getElementById('exportMy').addEventListener('click', () => {
   if (!myLeads.length) { alert('还没有保存的客户'); return; }
