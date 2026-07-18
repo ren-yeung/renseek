@@ -55,7 +55,8 @@
   .tab.active { background:#165dff; color:#fff; border-color:#165dff; }
   .tab .cnt { background:rgba(255,255,255,.28); color:#fff; border-radius:10px; font-size:11px; padding:1px 7px; margin-left:4px; }
   .tab:not(.active) .cnt { background:#e5e6eb; color:#4e5969; }
-  /* 编辑弹窗里的字段网格 */
+  .ops { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .ops button { margin:0; }
   #editMask .form { margin:0; }
   #editMask .form input, #editMask .form textarea { margin-bottom:4px; }
 </style>
@@ -276,10 +277,10 @@ function render(rows) {
       <td>${escHtml(r.type || '')}</td>
       <td><span class="tag ${r.score}">${r.score}</span></td>
       <td class="contact" id="c_${enc}">${contactCell(r)}</td>
-      <td>
-        <button class="mini ${imported ? '' : 'ghost'}" onclick="importLead(this, '${enc}')" ${imported ? 'disabled' : ''}>${imported ? '已导入' : '导入客户'}</button><br>
-        <button class="mini" style="margin-top:6px" onclick="deepContact('${enc}')">深挖</button><br>
-        <button class="mini ghost" style="margin-top:6px;color:#00a76f;border-color:#00a76f" onclick="openDraftByUrl('${enc}')">开发信</button>
+      <td class="ops">
+        <button class="mini ${imported ? '' : 'ghost'}" onclick="importLead(this, '${enc}')" ${imported ? 'disabled' : ''}>${imported ? '已导入' : '导入客户'}</button>
+        <button class="mini" onclick="deepContact('${enc}')">深挖</button>
+        <button class="mini ghost" style="color:#00a76f;border-color:#00a76f" onclick="openDraftByUrl('${enc}')">开发信</button>
       </td>
     </tr>`;
   });
@@ -428,10 +429,10 @@ function renderMgr() {
       <td><select onchange="mgrSetStatus(${m.id}, this.value)">${['待联系','已联系','已回复','已成交'].map(s => `<option ${m.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
       <td><input class="note" style="width:150px;padding:5px 8px;border:1px solid #d0d3d9;border-radius:6px;font-size:12px" placeholder="备注…" value="${escAttr(m.note)}" onchange="mgrSetNote(${m.id}, this.value)" /></td>
       <td style="font-size:12px">${draftTag}</td>
-      <td>
-        <button class="mini" onclick="openDraftManaged(${m.id})">开发信</button><br>
-        <button class="mini ghost" style="margin-top:6px" onclick="openEdit(${m.id})">编辑</button><br>
-        <button class="mini ghost" style="margin-top:6px;color:#d4380d;border-color:#d4380d" onclick="mgrDelete(${m.id})">删除</button>
+      <td class="ops">
+        <button class="mini" onclick="openDraftManaged(${m.id})">开发信</button>
+        <button class="mini ghost" onclick="openEdit(${m.id})">编辑</button>
+        <button class="mini ghost" style="color:#d4380d;border-color:#d4380d" onclick="mgrDelete(${m.id})">删除</button>
       </td>
     </tr>`;
   });
