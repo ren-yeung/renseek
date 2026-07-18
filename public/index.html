@@ -82,7 +82,7 @@
   </div>
 
   <div class="row" style="margin-top:12px">
-    <button class="mini" id="batchDeep" style="background:#00a76f;color:#fff">批量深挖 A 类（抓官网邮箱 + 验 MX + 反向搜邮）</button>
+    <button class="mini" id="batchDeep" style="background:#00a76f;color:#fff">批量深挖 A/B 类（官网邮箱+验MX；A 额外反向搜邮）</button>
     <span class="meta" id="filterMeta" style="margin-left:6px"></span>
   </div>
 
@@ -209,11 +209,13 @@ async function deepContact(encUrl) {
   }
 }
 
-// 批量深挖所有 A 类客户：抓官网邮箱 + 验 MX + 反向搜邮（rev=1）
-async function batchDeepA() {
+// 批量深挖 A/B 类客户：官网抓邮箱 + 验 MX；A 类额外触发博查反向搜邮(rev=1，耗配额)
+async function batchDeepAB() {
   if (!lastData) return;
-  const targets = lastData.results.filter(r => r.score === 'A');
-  if (!targets.length) { alert('没有 A 类客户可深挖（先搜索一次）'); return; }
+  const targets = lastData.results.filter(r => r.score === 'A' || r.score === 'B');
+  if (!targets.length) { alert('没有 A/B 类客户可深挖（先搜索一次）'); return; }
+  const aCount = targets.filter(r => r.score === 'A').length;
+  const bCount = targets.filter(r => r.score === 'B').length;
   const btn = document.getElementById('batchDeep');
   const meta = document.getElementById('filterMeta');
   const total = targets.length;
@@ -227,11 +229,13 @@ async function batchDeepA() {
   async function worker() {
     while (cursor < targets.length) {
       const r = targets[cursor++];
+      // A 类消耗博查配额做反向搜邮；B 类仅官网抓取+MX（免费）
+      const rev = r.score === 'A' ? 1 : 0;
       const enc = encodeURIComponent(r.url);
       const cell = document.getElementById('c_' + enc);
       if (cell) cell.innerHTML = '<span style="color:#8a8f99">抓取中…</span>';
       try {
-        const resp = await fetch('/api/contact?url=' + enc + '&rev=1');
+        const resp = await fetch('/api/contact?url=' + enc + '&rev=' + rev);
         const d = await resp.json();
         const row = lastData.results.find(x => x.url === r.url);
         if (row) {
@@ -260,7 +264,7 @@ async function batchDeepA() {
   btn.disabled = false;
   const cov = total ? Math.round(emailHits / total * 100) : 0;
   const mxCov = total ? Math.round(mxOk / total * 100) : 0;
-  meta.textContent = `批量深挖完成：${total} 条 A 类 → 抓到邮箱 ${emailHits} 条（${cov}%）、可收信 ${mxOk} 条（${mxCov}%）`;
+  meta.textContent = `批量深挖完成：A ${aCount} + B ${bCount} 共 ${total} 条 → 抓到邮箱 ${emailHits}（${cov}%）、可收信 ${mxOk}（${mxCov}%）`;
 }
 
 function saveLead(encUrl) {
@@ -330,8 +334,8 @@ document.getElementById('export').addEventListener('click', () => {
   download('﻿' + lines.join('\r\n'), `徽章客户_${lastData.query.slice(0,16)}.csv`);
 });
 
-// 绑定批量深挖 A 类按钮
-document.getElementById('batchDeep').addEventListener('click', batchDeepA);
+// 绑定批量深挖 A/B 类按钮
+document.getElementById('batchDeep').addEventListener('click', batchDeepAB);
 
 document.getElementById('exportMy').addEventListener('click', () => {
   if (!myLeads.length) { alert('还没有保存的客户'); return; }
