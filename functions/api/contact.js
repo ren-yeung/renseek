@@ -69,37 +69,6 @@ function socialFromHtml(html) {
   return li ? li[0] : '';
 }
 
-// 从 HTML 抠 WhatsApp 号码（用于「可 WhatsApp 触达」筛选条件）
-//   优先抓显式链接 wa.me/<num>、api.whatsapp.com/send?phone=<num>、whatsapp://send?phone=<num>
-//   兜底：正文出现 whatsapp 关键词且附近有电话，则取该电话作为 WhatsApp 号
-function whatsappFromHtml(html) {
-  const text = html.replace(/<[^>]+>/g, ' ');
-  // URL 类链接（在 href 属性里，需对原始 HTML 匹配，不能用去标签文本）
-  const urlPatterns = [
-    /https?:\/\/(?:api\.)?wa\.me\/(\d[\d\s-]{6,})/i,
-    /https?:\/\/(?:api\.)?whatsapp\.com\/send\?phone=(\d[\d\s-]{6,})/i,
-    /whatsapp:\/\/send\?phone=(\d[\d\s-]{6,})/i,
-  ];
-  for (const re of urlPatterns) {
-    const m = html.match(re);
-    if (m) {
-      const num = m[1].replace(/[\s-]/g, '');
-      if (/^\d{8,15}$/.test(num)) return num;
-    }
-  }
-  // 兜底：whatsapp 关键词附近 100 字符内的电话（用纯文本）
-  const wi = text.toLowerCase().indexOf('whatsapp');
-  if (wi >= 0) {
-    const around = text.slice(Math.max(0, wi - 50), wi + 70);
-    const pm = around.match(/(?:\+?\d{1,3}[\s.-]?)?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}/);
-    if (pm) {
-      const num = pm[0].replace(/[^\d]/g, '');
-      if (/^\d{8,15}$/.test(num)) return num;
-    }
-  }
-  return '';
-}
-
 // 从首页 HTML 找 contact/about 类子页链接（绝对化）
 function findSubpages(html, baseUrl) {
   const links = new Set();
@@ -167,7 +136,6 @@ export async function onRequest(context) {
   const emailSet = new Set();
   const phoneSet = new Set();
   let social = '';
-  let whatsapp = '';
   let pagesFetched = 0;
 
   try {
@@ -178,7 +146,6 @@ export async function onRequest(context) {
       emailsFromHtml(home).forEach(e => emailSet.add(e));
       phonesFromHtml(home).forEach(p => phoneSet.add(p));
       social = socialFromHtml(home) || social;
-      whatsapp = whatsappFromHtml(home) || whatsapp;
 
       // 跟进 contact/about 子页
       const subs = findSubpages(home, target);
@@ -189,7 +156,6 @@ export async function onRequest(context) {
         emailsFromHtml(h).forEach(e => emailSet.add(e));
         phonesFromHtml(h).forEach(p => phoneSet.add(p));
         social = social || socialFromHtml(h);
-        whatsapp = whatsapp || whatsappFromHtml(h);
       });
     }
 
@@ -216,13 +182,12 @@ export async function onRequest(context) {
       emails,
       phones: [...phoneSet].slice(0, 5),
       social,
-      whatsapp,
       mx, mxHost,
       rev, revCount, pagesFetched
     }), { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   } catch (e) {
     return new Response(JSON.stringify({
-      url: target, domain, emails: [], phones: [], social: '', whatsapp: '', mx: null, mxHost: '', error: String(e)
+      url: target, domain, emails: [], phones: [], social: '', mx: null, mxHost: '', error: String(e)
     }), { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   }
 }

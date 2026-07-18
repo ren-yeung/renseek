@@ -83,9 +83,6 @@
 
   <div class="row" style="margin-top:12px">
     <button class="mini" id="batchDeep" style="background:#00a76f;color:#fff">批量深挖 A/B 类（官网邮箱+验MX；A 额外反向搜邮）</button>
-    <label class="mini" style="background:#fff;color:#333;border:1px solid #d0d3d9;margin-left:8px;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
-      <input type="checkbox" id="waOnly"> 仅显示有 WhatsApp
-    </label>
     <span class="meta" id="filterMeta" style="margin-left:6px"></span>
   </div>
 
@@ -152,7 +149,6 @@ function contactCell(r) {
   if (emails.length > 3) parts.push(`<span style="color:#8a8f99">…等 ${emails.length} 个</span>`);
   if (r.phone) parts.push(`📞 ${r.phone}`);
   if (r.social) parts.push(`🔗 <a href="${r.social}" target="_blank">LinkedIn</a>`);
-  if (r.whatsapp) parts.push(`🟢 <a href="https://wa.me/${r.whatsapp}" target="_blank">WhatsApp</a>`);
   if (!parts.length) parts.push('<span style="color:#b0b3b8">点「深挖」抓官网</span>');
   let mxTag = '';
   // 只有在抓到了邮箱时，MX 标签才有意义
@@ -206,7 +202,6 @@ async function deepContact(encUrl) {
       row.social = d.social || row.social;
       row.mx = d.mx;
       row.mxHost = d.mxHost;
-      row.whatsapp = d.whatsapp || row.whatsapp;
     }
     if (lastData) render(allRows);
   } catch (e) {
@@ -224,7 +219,7 @@ async function batchDeepAB() {
   const btn = document.getElementById('batchDeep');
   const meta = document.getElementById('filterMeta');
   const total = targets.length;
-  let done = 0, emailHits = 0, mxOk = 0, waHits = 0;
+  let done = 0, emailHits = 0, mxOk = 0;
   btn.disabled = true;
   // 全量渲染，确保所有目标行都在 DOM 中可实时更新
   render(allRows);
@@ -250,11 +245,9 @@ async function batchDeepAB() {
           row.social = d.social || row.social;
           row.mx = d.mx;
           row.mxHost = d.mxHost;
-          row.whatsapp = d.whatsapp || row.whatsapp;
           if (cell) cell.innerHTML = contactCell(row);
           if (row.emails.length) emailHits++;
           if (d.mx === true) mxOk++;
-          if (row.whatsapp) waHits++;
         } else if (cell) {
           cell.innerHTML = '<span style="color:#d4380d">数据缺失</span>';
         }
@@ -271,7 +264,7 @@ async function batchDeepAB() {
   btn.disabled = false;
   const cov = total ? Math.round(emailHits / total * 100) : 0;
   const mxCov = total ? Math.round(mxOk / total * 100) : 0;
-  meta.textContent = `批量深挖完成：A ${aCount} + B ${bCount} 共 ${total} 条 → 抓到邮箱 ${emailHits}（${cov}%）、可收信 ${mxOk}（${mxCov}%）、有 WhatsApp ${waHits}（${Math.round(waHits/total*100)}%）`;
+  meta.textContent = `批量深挖完成：A ${aCount} + B ${bCount} 共 ${total} 条 → 抓到邮箱 ${emailHits}（${cov}%）、可收信 ${mxOk}（${mxCov}%）`;
 }
 
 function saveLead(encUrl) {
@@ -330,12 +323,12 @@ function renderMy() {
 
 document.getElementById('export').addEventListener('click', () => {
   if (!allRows.length) return;
-  const head = ['公司名','网址','类型','评分','邮箱','电话','社媒','可收信','WhatsApp','备注','摘要'];
+  const head = ['公司名','网址','类型','评分','邮箱','电话','社媒','可收信','备注','摘要'];
   const lines = [head.join(',')];
   allRows.forEach(r => {
     const emailStr = (r.emails && r.emails.length) ? r.emails.join('; ') : (r.email || '');
     const mxStr = r.mx === true ? '是' : (r.mx === false ? '否' : '');
-    const cells = [r.name, r.url, r.type, r.score, emailStr, r.phone, r.social, mxStr, r.whatsapp || '', r.note, r.snippet].map(esc);
+    const cells = [r.name, r.url, r.type, r.score, emailStr, r.phone, r.social, mxStr, r.note, r.snippet].map(esc);
     lines.push(cells.join(','));
   });
   download('﻿' + lines.join('\r\n'), `徽章客户_${lastData.query.slice(0,16)}.csv`);
@@ -343,18 +336,6 @@ document.getElementById('export').addEventListener('click', () => {
 
 // 绑定批量深挖 A/B 类按钮
 document.getElementById('batchDeep').addEventListener('click', batchDeepAB);
-
-// WhatsApp 筛选：仅显示有 WhatsApp 联系方式的客户
-let waOnly = false;
-function applyFilter() {
-  const rows = waOnly ? allRows.filter(r => r.whatsapp) : allRows;
-  render(rows);
-  if (waOnly) document.getElementById('filterMeta').textContent = `（仅显示有 WhatsApp：${rows.length} / ${allRows.length} 条）`;
-}
-document.getElementById('waOnly').addEventListener('change', e => {
-  waOnly = e.target.checked;
-  if (lastData) applyFilter();
-});
 
 document.getElementById('exportMy').addEventListener('click', () => {
   if (!myLeads.length) { alert('还没有保存的客户'); return; }
