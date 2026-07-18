@@ -7,16 +7,17 @@
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin:0; background:#f5f6f8; color:#1f2329; }
-  .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
   .sub { color:#8a8f99; font-size: 13px; margin-bottom: 20px; }
   .form { background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:18px; display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
   .form label { font-size:12px; color:#4e5969; display:block; margin-bottom:6px; }
   .form input { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; }
   .form .full { grid-column: 1 / -1; }
-  .row { display:flex; gap:10px; align-items:center; margin-top:16px; }
+  .row { display:flex; gap:10px; align-items:center; margin-top:16px; flex-wrap:wrap; }
   button { background:#165dff; color:#fff; border:0; padding:10px 18px; border-radius:7px; font-size:14px; cursor:pointer; }
   button.ghost { background:#fff; color:#165dff; border:1px solid #165dff; }
+  button.mini { padding:4px 10px; font-size:12px; border-radius:6px; }
   button:disabled { opacity:.6; cursor:default; }
   .meta { font-size:12px; color:#8a8f99; margin-left:auto; }
   table { width:100%; border-collapse:collapse; margin-top:20px; background:#fff; border:1px solid #e5e6eb; border-radius:10px; overflow:hidden; }
@@ -26,15 +27,29 @@
   .tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; }
   .tag.A { background:#e8ffea; color:#009a29; }
   .tag.B { background:#fff7e8; color:#d4660a; }
-  .tag.C { background:#ffece8; color:#d4380d; }
+  .tag.C { background:#fff1e8; color:#d4380d; }
+  .tag.D { background:#f0f0f0; color:#8a8f99; }
   .empty { text-align:center; color:#8a8f99; padding:40px; }
   .err { color:#d4380d; padding:12px; }
+  .contact { font-size:12px; color:#4e5969; line-height:1.6; }
+  .contact a { color:#165dff; }
+  .myleads { margin-top:28px; background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:16px 18px; }
+  .myleads h2 { font-size:15px; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+  .myleads h2 .cnt { background:#165dff; color:#fff; border-radius:10px; font-size:12px; padding:1px 8px; }
+  .lead-item { border:1px solid #eef0f3; border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+  .lead-item .top { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .lead-item .name { font-weight:600; }
+  .lead-item .ctrl { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .lead-item select, .lead-item input.note { padding:5px 8px; border:1px solid #d0d3d9; border-radius:6px; font-size:12px; }
+  .lead-item input.note { width:220px; }
+  .lead-item .info { font-size:12px; color:#4e5969; margin-top:6px; line-height:1.6; }
+  .lead-item .info a { color:#165dff; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>外贸徽章客户开发器</h1>
-  <div class="sub">博查搜索 + 买家/卖家初筛 · 网页载体原型 · 默认买家导向词避免搜出中国工厂</div>
+  <div class="sub">博查搜索 + 买家/卖家初筛 + 联系方式提取 · 网页载体 · 支持「我的客户」沉淀跟进</div>
 
   <div class="form">
     <div>
@@ -46,7 +61,7 @@
       <input id="country" value="United States" />
     </div>
     <div>
-      <label>数量</label>
+      <label>每词数量</label>
       <input id="n" type="number" value="10" min="1" max="30" />
     </div>
     <div>
@@ -54,22 +69,36 @@
       <input id="exclude" value="china factory" />
     </div>
     <div class="full">
-      <label>实际搜索词（自动生成，可改）</label>
+      <label>实际搜索词（自动生成，含两个买家词变体）</label>
       <input id="qpreview" readonly />
     </div>
   </div>
 
   <div class="row">
     <button id="go">搜索客户</button>
-    <button id="export" class="ghost" disabled>导出 CSV</button>
+    <button id="export" class="ghost" disabled>导出当前 CSV</button>
+    <button id="exportMy" class="ghost">导出我的客户 CSV</button>
     <span class="meta" id="meta"></span>
   </div>
 
   <div id="result"></div>
+
+  <div class="myleads">
+    <h2>我的客户 <span class="cnt" id="mycnt">0</span></h2>
+    <div id="mylist"><div class="empty">还没有保存客户。搜索后点每条右侧「保存」即可沉淀到这里，便于跟进。</div></div>
+  </div>
 </div>
 
 <script>
+const LS_KEY = 'renseek_leads';
 let lastData = null;
+let myLeads = loadMy();
+
+function loadMy() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveMy() { localStorage.setItem(LS_KEY, JSON.stringify(myLeads)); renderMy(); }
 
 function refreshQuery() {
   const p = document.getElementById('product').value;
@@ -77,7 +106,7 @@ function refreshQuery() {
   const ex = document.getElementById('exclude').value;
   let q = `${p} distributor ${c} promotional products`;
   if (ex) q += ' -' + ex.split(/[\s,，]+/).filter(Boolean).join(' -');
-  document.getElementById('qpreview').value = q;
+  document.getElementById('qpreview').value = q + '  |  ' + `${p} wholesale ${c} buy bulk`;
 }
 ['product','country','exclude'].forEach(id => document.getElementById(id).addEventListener('input', refreshQuery));
 refreshQuery();
@@ -105,42 +134,147 @@ document.getElementById('go').addEventListener('click', async () => {
   }
 });
 
+function contactCell(r) {
+  const parts = [];
+  if (r.email) parts.push(`✉️ <a href="mailto:${r.email}">${r.email}</a>`);
+  if (r.phone) parts.push(`📞 ${r.phone}`);
+  if (r.social) parts.push(`🔗 <a href="${r.social}" target="_blank">LinkedIn</a>`);
+  if (!parts.length) parts.push('<span style="color:#b0b3b8">点「深挖」抓官网</span>');
+  return parts.join('<br>');
+}
+
 function render(rows) {
   if (!rows.length) { document.getElementById('result').innerHTML = '<div class="empty">无结果</div>'; return; }
-  let html = '<table><thead><tr><th>公司/网站</th><th>类型</th><th>评分</th><th>备注</th><th>摘要</th></tr></thead><tbody>';
-  rows.forEach(r => {
+  let html = '<table><thead><tr><th>公司/网站</th><th>类型</th><th>评分</th><th>联系方式</th><th>备注</th><th>摘要</th><th>操作</th></tr></thead><tbody>';
+  rows.forEach((r, i) => {
+    const saved = myLeads.some(m => m.url === r.url);
     html += `<tr>
       <td><a href="${r.url}" target="_blank">${r.name || r.site || r.url}</a><br><span style="color:#8a8f99;font-size:11px">${r.url}</span></td>
       <td>${r.type}</td>
       <td><span class="tag ${r.score}">${r.score}</span></td>
+      <td class="contact" id="c${i}">${contactCell(r)}</td>
       <td>${r.note}</td>
       <td style="color:#4e5969">${r.snippet}</td>
+      <td>
+        <button class="mini ghost" onclick="saveLead(${i})" ${saved ? 'disabled' : ''}>${saved ? '已存' : '保存'}</button><br>
+        <button class="mini" style="margin-top:6px" onclick="deepContact('${encodeURIComponent(r.url)}',${i})">深挖</button>
+      </td>
     </tr>`;
   });
   html += '</tbody></table>';
   document.getElementById('result').innerHTML = html;
 }
 
+async function deepContact(encUrl, i) {
+  const url = decodeURIComponent(encUrl);
+  const cell = document.getElementById('c' + i);
+  cell.innerHTML = '<span style="color:#8a8f99">抓取中…</span>';
+  try {
+    const r = await fetch('/api/contact?url=' + encodeURIComponent(url));
+    const d = await r.json();
+    const parts = [];
+    (d.emails || []).forEach(e => parts.push(`✉️ <a href="mailto:${e}">${e}</a>`));
+    (d.phones || []).forEach(p => parts.push(`📞 ${p}`));
+    if (d.social) parts.push(`🔗 <a href="${d.social}" target="_blank">LinkedIn</a>`);
+    cell.innerHTML = parts.length ? parts.join('<br>') : '<span style="color:#b0b3b8">未提取到</span>';
+  } catch (e) {
+    cell.innerHTML = '<span style="color:#d4380d">抓取失败</span>';
+  }
+}
+
+function saveLead(i) {
+  if (!lastData || !lastData.results[i]) return;
+  const r = lastData.results[i];
+  if (myLeads.some(m => m.url === r.url)) return;
+  myLeads.push({
+    name: r.name, url: r.url, type: r.type, score: r.score,
+    email: r.email, phone: r.phone, social: r.social, snippet: r.snippet,
+    status: '待联系', note: '', savedAt: new Date().toISOString().slice(0, 10)
+  });
+  saveMy();
+  // 刷新当前表格里的按钮状态
+  if (lastData) render(lastData.results);
+}
+
+function setStatus(url, v) {
+  const m = myLeads.find(x => x.url === url);
+  if (m) { m.status = v; saveMy(); }
+}
+function setNote(url, v) {
+  const m = myLeads.find(x => x.url === url);
+  if (m) { m.note = v; saveMy(); }
+}
+function removeLead(url) {
+  myLeads = myLeads.filter(x => x.url !== url);
+  saveMy();
+  if (lastData) render(lastData.results);
+}
+
+function renderMy() {
+  document.getElementById('mycnt').textContent = myLeads.length;
+  const box = document.getElementById('mylist');
+  if (!myLeads.length) { box.innerHTML = '<div class="empty">还没有保存客户。搜索后点每条右侧「保存」即可沉淀到这里，便于跟进。</div>'; return; }
+  const order = { '待联系': 0, '已联系': 1, '已回复': 2, '已成交': 3 };
+  const sorted = [...myLeads].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+  box.innerHTML = sorted.map(m => {
+    const contact = [m.email ? `✉️ ${m.email}` : '', m.phone ? `📞 ${m.phone}` : '', m.social ? `🔗 ${m.social}` : ''].filter(Boolean).join(' · ');
+    return `<div class="lead-item">
+      <div class="top">
+        <span class="name"><a href="${m.url}" target="_blank">${m.name || m.url}</a></span>
+        <span class="tag ${m.score}">${m.score}</span>
+        <span style="color:#8a8f99;font-size:12px">${m.type}</span>
+        <span class="ctrl">
+          <select onchange="setStatus('${encodeURIComponent(m.url)}', this.value)">
+            ${['待联系','已联系','已回复','已成交'].map(s => `<option ${m.status===s?'selected':''}>${s}</option>`).join('')}
+          </select>
+          <button class="mini ghost" onclick="removeLead('${encodeURIComponent(m.url)}')">删除</button>
+        </span>
+      </div>
+      <div class="info">${contact || '无联系方式'} ${m.savedAt ? '· 保存于 ' + m.savedAt : ''}</div>
+      <div class="info"><input class="note" placeholder="跟进备注…" value="${escAttr(m.note)}" onchange="setNote('${encodeURIComponent(m.url)}', this.value)"></div>
+    </div>`;
+  }).join('');
+}
+
 document.getElementById('export').addEventListener('click', () => {
   if (!lastData) return;
-  const head = ['公司名','网址','类型','评分','备注','摘要'];
+  const head = ['公司名','网址','类型','评分','邮箱','电话','社媒','备注','摘要'];
   const lines = [head.join(',')];
   lastData.results.forEach(r => {
-    const cells = [r.name, r.url, r.type, r.score, r.note, r.snippet].map(esc);
+    const cells = [r.name, r.url, r.type, r.score, r.email, r.phone, r.social, r.note, r.snippet].map(esc);
     lines.push(cells.join(','));
   });
-  const csv = '﻿' + lines.join('\r\n'); // BOM 防 Excel 乱码
+  download('﻿' + lines.join('\r\n'), `徽章客户_${lastData.query.slice(0,16)}.csv`);
+});
+
+document.getElementById('exportMy').addEventListener('click', () => {
+  if (!myLeads.length) { alert('还没有保存的客户'); return; }
+  const head = ['公司名','网址','类型','评分','邮箱','电话','社媒','跟进状态','备注','保存日期'];
+  const lines = [head.join(',')];
+  myLeads.forEach(m => {
+    const cells = [m.name, m.url, m.type, m.score, m.email, m.phone, m.social, m.status, m.note, m.savedAt].map(esc);
+    lines.push(cells.join(','));
+  });
+  download('﻿' + lines.join('\r\n'), `我的客户_${new Date().toISOString().slice(0,10)}.csv`);
+});
+
+function download(csv, name) {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `徽章客户_${lastData.query.slice(0,20)}.csv`;
+  a.download = name;
   a.click();
-});
+}
 
 function esc(s) {
   s = (s || '').replace(/"/g, '""');
   return `"${s}"`;
 }
+function escAttr(s) {
+  return (s || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+renderMy();
 </script>
 </body>
 </html>
