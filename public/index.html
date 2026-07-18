@@ -380,7 +380,8 @@ async function doSearch() {
   const box = document.getElementById('result');
   meta.textContent = '搜索中…'; box.innerHTML = '';
   try {
-    const url = `/api/search?product=${encodeURIComponent(product)}&country=${encodeURIComponent(country)}&exclude=${encodeURIComponent(exclude)}&n=${encodeURIComponent(n)}`;
+    const targetLang = document.getElementById('targetLang').value;
+    const url = `/api/search?product=${encodeURIComponent(product)}&country=${encodeURIComponent(country)}&exclude=${encodeURIComponent(exclude)}&target=${encodeURIComponent(targetLang)}&n=${encodeURIComponent(n)}`;
     const r = await fetch(url);
     const data = await r.json();
     if (data.error) { box.innerHTML = `<div class="err">错误：${escHtml(data.error)}</div>`; meta.textContent=''; return; }

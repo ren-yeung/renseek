@@ -64,7 +64,20 @@ export async function onRequest(context) {
   const product = (url.searchParams.get('product') || 'custom lapel pins').trim();
   const country = (url.searchParams.get('country') || 'United States').trim();
   const exclude = (url.searchParams.get('exclude') || '').trim();
+  const target = (url.searchParams.get('target') || 'English').trim();
   const n = Math.min(parseInt(url.searchParams.get('n') || '10', 10) || 10, 30);
+
+  const BUYER_TERMS = {
+    English: { dist: 'distributor', promo: 'promotional products', wholesale: 'wholesale', buyBulk: 'buy bulk' },
+    Spanish: { dist: 'distribuidor', promo: 'productos promocionales', wholesale: 'venta al por mayor', buyBulk: 'comprar al por mayor' },
+    French: { dist: 'distributeur', promo: 'produits promotionnels', wholesale: 'vente en gros', buyBulk: 'acheter en gros' },
+    German: { dist: 'Distributor', promo: 'Werbeartikel', wholesale: 'Großhandel', buyBulk: 'Großhandel kaufen' },
+    Russian: { dist: 'дистрибьютор', promo: 'рекламная продукция', wholesale: 'оптовая продажа', buyBulk: 'покупать оптом' },
+    Portuguese: { dist: 'distribuidor', promo: 'produtos promocionais', wholesale: 'atacado', buyBulk: 'comprar atacado' },
+    Italian: { dist: 'distributore', promo: 'prodotti promozionali', wholesale: 'ingrosso', buyBulk: 'acquistare all ingrosso' },
+    Japanese: { dist: '卸売業者', promo: '販促品', wholesale: '卸売', buyBulk: '大口買い' }
+  };
+  const t = BUYER_TERMS[target] || BUYER_TERMS.English;
 
   const key = env.BOCHA_KEY;
   if (!key) {
@@ -75,8 +88,8 @@ export async function onRequest(context) {
 
   // 多个买家导向词变体，提高召回（两次搜索合并去重）
   let queries = [
-    `${product} distributor ${country} promotional products`,
-    `${product} wholesale ${country} buy bulk`
+    `${product} ${t.dist} ${country} ${t.promo}`,
+    `${product} ${t.wholesale} ${country} ${t.buyBulk}`
   ];
   if (exclude) {
     const ex = exclude.split(/[\s,，]+/).filter(Boolean).join(' -');
