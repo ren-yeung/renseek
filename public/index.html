@@ -738,12 +738,14 @@ function openDraftByUrl(encUrl) {
 function openDraft(lead) {
   draftRow = lead;
   document.getElementById('draftTitle').textContent = 'AI 开发信 · ' + (lead.name || lead.url);
-  document.getElementById('draftSub').textContent = lead.url;
+  const emails = (lead.emails && lead.emails.length) ? lead.emails : (lead.email ? [lead.email] : []);
+  const emailHint = emails.length ? `收件邮箱：${emails.join(', ')}` : '暂无邮箱，需先深挖获取';
+  document.getElementById('draftSub').textContent = lead.url + (emails.length ? ` · ${emails.length} 个邮箱` : '');
   const subj = lead.draft_subject || (lead.draft && lead.draft.subject) || '';
   const body = lead.draft_body || (lead.draft && lead.draft.body) || '';
   document.getElementById('draftSubject').value = subj;
   document.getElementById('draftBody').value = body;
-  document.getElementById('draftHint').textContent = '';
+  document.getElementById('draftHint').textContent = emailHint;
   document.getElementById('draftMask').classList.add('show');
 }
 document.getElementById('draftClose').addEventListener('click', () => document.getElementById('draftMask').classList.remove('show'));
@@ -791,18 +793,18 @@ document.getElementById('draftCopy').addEventListener('click', () => {
 
 document.getElementById('draftGmail').addEventListener('click', () => {
   if (!draftRow) return;
-  const email = (draftRow.emails && draftRow.emails[0]) || draftRow.email;
-  if (!email) { document.getElementById('draftHint').textContent = '该客户还没有邮箱，先点「深挖」抓官网邮箱再发送。'; return; }
+  const emails = (draftRow.emails && draftRow.emails.length) ? draftRow.emails : (draftRow.email ? [draftRow.email] : []);
+  if (!emails.length) { document.getElementById('draftHint').textContent = '该客户还没有邮箱，先点「深挖」抓官网邮箱再发送。'; return; }
   const su = encodeURIComponent(document.getElementById('draftSubject').value);
   const body = encodeURIComponent(document.getElementById('draftBody').value);
-  window.open('https://mail.google.com/mail/?view=cm&to=' + encodeURIComponent(email) + '&su=' + su + '&body=' + body, '_blank');
+  window.open('https://mail.google.com/mail/?view=cm&to=' + encodeURIComponent(emails.join(',')) + '&su=' + su + '&body=' + body, '_blank');
 });
 
 // 云端发送：通过 Cloudflare Pages Function + Resend 发邮件（无需本机 Gmail）
 document.getElementById('draftResend').addEventListener('click', async () => {
   if (!draftRow) return;
-  const email = (draftRow.emails && draftRow.emails[0]) || draftRow.email;
-  if (!email) { document.getElementById('draftHint').textContent = '该客户还没有邮箱，先点「深挖」抓官网邮箱再发送。'; return; }
+  const emails = (draftRow.emails && draftRow.emails.length) ? draftRow.emails : (draftRow.email ? [draftRow.email] : []);
+  if (!emails.length) { document.getElementById('draftHint').textContent = '该客户还没有邮箱，先点「深挖」抓官网邮箱再发送。'; return; }
   const btn = document.getElementById('draftResend');
   const hint = document.getElementById('draftHint');
   btn.disabled = true; btn.textContent = '发送中…'; hint.textContent = '';
@@ -815,11 +817,11 @@ document.getElementById('draftResend').addEventListener('click', async () => {
     const replyTo = document.getElementById('draftReplyTo').value.trim() || 'ycr13120902436@gmail.com';
     const r = await fetch('/api/send', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: email, subject, html, text: bodyText, from, replyTo })
+      body: JSON.stringify({ to: emails, subject, html, text: bodyText, from, replyTo })
     });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
-    hint.textContent = '✅ 已发送，Resend ID：' + d.id;
+    hint.textContent = '✅ 已发送给 ' + emails.length + ' 个邮箱，Resend ID：' + d.id;
 
     // 回写客户管理库（管理库客户有 id）
     if (draftRow.id) {
