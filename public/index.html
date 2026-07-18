@@ -284,7 +284,17 @@ function syncTranslatedDefaults() {
   });
 }
 
-['product', 'country', 'exclude', 'productTranslated', 'countryTranslated', 'excludeTranslated'].forEach(id => {
+function onSourceInput(id) {
+  const src = document.getElementById(id).value;
+  if (!hasChinese(src)) {
+    document.getElementById(id + 'Translated').value = src;
+  }
+}
+
+['product', 'country', 'exclude'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => { onSourceInput(id); refreshQuery(); });
+});
+['productTranslated', 'countryTranslated', 'excludeTranslated'].forEach(id => {
   document.getElementById(id).addEventListener('input', refreshQuery);
 });
 syncTranslatedDefaults();
