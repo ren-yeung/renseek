@@ -31,11 +31,14 @@ export async function onRequest(context) {
   const finalFrom = from || defaultFrom;
   const finalTo = Array.isArray(to) ? to : [to];
 
+  // 把裸 HTML 包装成完整 UTF-8 文档，避免 163/Outlook 等客户端用 GBK 解码中文乱码
+  const finalHtml = html ? wrapHtml(html) : undefined;
+
   const payload = {
     from: finalFrom,
     to: finalTo,
     subject,
-    ...(html ? { html } : {}),
+    ...(finalHtml ? { html: finalHtml } : {}),
     ...(text ? { text } : {}),
     ...(replyTo ? { reply_to: replyTo } : {})
   };
@@ -68,4 +71,21 @@ function json(obj, status = 200) {
 
 function jsonError(msg, status) {
   return json({ error: msg }, status);
+}
+
+function wrapHtml(html) {
+  if (!html) return html;
+  if (/<html[\s>]/i.test(html)) return html;
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email</title>
+</head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;line-height:1.6;color:#1f2329;">
+  ${html}
+</body>
+</html>`;
 }
