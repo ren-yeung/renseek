@@ -18,9 +18,10 @@
 ## 3. 建表
 两种方式任选其一：
 
-**方式 A（Dashboard 粘贴执行）**
+**方式 A（Dashboard 粘贴执行，推荐）**
 - D1 → `renseek` → **Console / Query**
-- 把本项目根目录 `init-db.sql` 的内容整段粘贴进去，点 **Run**
+- 打开本项目根目录 `init-db.sql`，把里面的 SQL 语句整段复制粘贴到控制台里，点 **Run**
+  - ⚠️ 注意：不要只输入 `init-db.sql` 这个文件名，控制台需要的是 SQL 文本内容
 - 看到 `leads` 表创建成功即可
 
 **方式 B（命令行）**

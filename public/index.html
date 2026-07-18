@@ -7,7 +7,7 @@
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin:0; background:#f5f6f8; color:#1f2329; }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .wrap { max-width: 100%; margin: 0; padding: 24px 32px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
   .sub { color:#8a8f99; font-size: 13px; margin-bottom: 18px; }
   .form { background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:18px; display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
@@ -20,10 +20,11 @@
   button.mini { padding:4px 10px; font-size:12px; border-radius:6px; }
   button:disabled { opacity:.6; cursor:default; }
   .meta { font-size:12px; color:#8a8f99; margin-left:auto; }
-  table { width:100%; border-collapse:collapse; margin-top:20px; background:#fff; border:1px solid #e5e6eb; border-radius:10px; overflow:hidden; }
-  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid #f0f1f3; font-size:13px; vertical-align:top; }
+  .table-wrap { overflow-x: auto; margin-top: 20px; background: #fff; border: 1px solid #e5e6eb; border-radius: 10px; }
+  table { width: auto; min-width: 100%; border-collapse: collapse; table-layout: auto; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid #f0f1f3; font-size:13px; vertical-align:middle; white-space: nowrap; }
   th { background:#f7f8fa; color:#4e5969; font-weight:600; }
-  td a { color:#165dff; text-decoration:none; word-break:break-all; }
+  td a { color:#165dff; text-decoration:none; word-break: normal; white-space: nowrap; }
   .tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; }
   .tag.A { background:#e8ffea; color:#009a29; }
   .tag.B { background:#fff7e8; color:#d4660a; }
@@ -57,10 +58,8 @@
   .tab:not(.active) .cnt { background:#e5e6eb; color:#4e5969; }
   .ops { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
   .ops button { margin:0; }
-  .score-filters { display:inline-flex; gap:4px; margin-left:6px; vertical-align:middle; }
-  .score-filters button { padding:2px 7px; font-size:11px; border-radius:10px; background:#f2f3f5; color:#4e5969; border:1px solid #e5e6eb; }
-  .score-filters button.active { background:#165dff; color:#fff; border-color:#165dff; }
-  .score-filters button:disabled { opacity:.6; }
+  .score-select { padding:2px 6px; font-size:12px; border-radius:6px; border:1px solid #d0d3d9; margin-left:6px; }
+  .row-check { width:16px; height:16px; cursor:pointer; }
   #editMask .form { margin:0; }
   #editMask .form input, #editMask .form textarea { margin-bottom:4px; }
 </style>
@@ -141,6 +140,14 @@
       <button id="mgrExport" class="ghost">导出 CSV</button>
       <span class="meta" id="mgrMeta"></span>
     </div>
+    <div class="row" style="margin-top:12px">
+      <button class="mini" id="mgrBatchStatus" style="background:#165dff;color:#fff">批量改状态</button>
+      <select id="mgrBatchStatusSelect" style="margin-left:6px;padding:5px 10px;border:1px solid #d0d3d9;border-radius:6px;font-size:13px">
+        <option>待联系</option><option>已联系</option><option>已回复</option><option>已成交</option>
+      </select>
+      <button class="mini ghost" id="mgrBatchDelete" style="color:#d4380d;border-color:#d4380d;margin-left:8px">批量删除</button>
+      <span class="meta" id="mgrBatchMeta"></span>
+    </div>
     <div id="mgrList" style="margin-top:16px"></div>
   </div>
 </div>
@@ -206,9 +213,11 @@ let lastData = null;
 let allRows = [];          // 最近一次搜索的全部结果
 let visibleRows = [];      // 当前评分筛选后的结果
 let importedSet = new Set();   // 已导入到管理库的 url 集合
+let devChecked = new Set();    // 开发页已勾选的客户 url
 let managedLeads = [];         // 客户管理库（D1）列表
+let mgrChecked = new Set();    // 管理页已勾选的客户 id
 let editId = null;
-let scoreFilter = new Set(['A','B','C','D']); // 当前显示的评分
+let scoreFilter = 'ALL'; // 当前评分筛选：ALL/A/B/C/D
 
 // ========== Tab 切换 ==========
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
@@ -276,36 +285,50 @@ function render(rows) {
   if (!rows.length) { document.getElementById('result').innerHTML = '<div class="empty">无结果</div>'; return; }
   const scoreCounts = {A:0,B:0,C:0,D:0};
   allRows.forEach(r => { scoreCounts[r.score||'D'] = (scoreCounts[r.score||'D']||0)+1; });
-  const scoreFilters = ['A','B','C','D'].map(s => {
-    const active = scoreFilter.has(s);
-    const count = scoreCounts[s] || 0;
-    return `<button class="${active?'active':''}" onclick="toggleScore('${s}')" ${count===0?'disabled':''}>${s} (${count})</button>`;
+  const scoreOptions = ['ALL','A','B','C','D'].map(s => {
+    const label = s === 'ALL' ? '全部评分' : `${s} (${scoreCounts[s] || 0})`;
+    const selected = scoreFilter === s ? ' selected' : '';
+    return `<option value="${s}"${selected}>${label}</option>`;
   }).join('');
-  let html = '<table><thead><tr><th>公司/网站</th><th>类型</th><th>评分<div class="score-filters">' + scoreFilters + '</div></th><th>联系方式</th><th>导入客户</th><th>深挖</th><th>操作</th></tr></thead><tbody>';
+  const allChecked = rows.length > 0 && rows.every(r => devChecked.has(r.url));
+  let html = '<div class="table-wrap"><table><thead><tr><th><input type="checkbox" class="row-check" id="devCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>类型</th><th>评分<select class="score-select" onchange="setScoreFilter(this.value)">' + scoreOptions + '</select></th><th>联系方式</th></tr></thead><tbody>';
   rows.forEach((r) => {
     const enc = encodeURIComponent(r.url);
+    const checked = devChecked.has(r.url) ? ' checked' : '';
     const imported = importedSet.has(r.url);
     html += `<tr>
-      <td><a href="${escHtml(r.url)}" target="_blank">${escHtml(r.name || r.site || r.url)}</a><br><span style="color:#8a8f99;font-size:11px">${escHtml(r.url)}</span></td>
+      <td><input type="checkbox" class="row-check" data-url="${enc}"${checked}></td>
+      <td><a href="${escHtml(r.url)}" target="_blank">${escHtml(r.name || r.site || r.url)}</a>${imported ? ' <span style="color:#8a8f99;font-size:11px">(已导入)</span>' : ''}<br><span style="color:#8a8f99;font-size:11px">${escHtml(r.url)}</span></td>
       <td>${escHtml(r.type || '')}</td>
       <td><span class="tag ${r.score}">${r.score}</span></td>
       <td class="contact" id="c_${enc}">${contactCell(r)}</td>
-      <td><button class="mini ${imported ? '' : 'ghost'}" onclick="importLead(this, '${enc}')" ${imported ? 'disabled' : ''}>${imported ? '已导入' : '导入'}</button></td>
-      <td><button class="mini" onclick="deepContact('${enc}')">深挖</button></td>
-      <td class="ops"><button class="mini ghost" style="color:#00a76f;border-color:#00a76f" onclick="openDraftByUrl('${enc}')">开发信</button></td>
     </tr>`;
   });
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
   document.getElementById('result').innerHTML = html;
+  const allBox = document.getElementById('devCheckAll');
+  if (allBox) allBox.addEventListener('change', toggleDevCheckAll);
+  document.querySelectorAll('#result tbody .row-check').forEach(cb => cb.addEventListener('change', () => {
+    const url = decodeURIComponent(cb.dataset.url);
+    if (cb.checked) devChecked.add(url); else devChecked.delete(url);
+  }));
 }
 
-function toggleScore(s) {
-  if (scoreFilter.has(s)) scoreFilter.delete(s); else scoreFilter.add(s);
-  if (scoreFilter.size === 0) { scoreFilter = new Set(['A','B','C','D']); }
+function toggleDevCheckAll(e) {
+  const checked = e.target.checked;
+  document.querySelectorAll('#result tbody .row-check').forEach(cb => {
+    cb.checked = checked;
+    const url = decodeURIComponent(cb.dataset.url);
+    if (checked) devChecked.add(url); else devChecked.delete(url);
+  });
+}
+
+function setScoreFilter(s) {
+  scoreFilter = s;
   applyScoreFilter();
 }
 function applyScoreFilter() {
-  visibleRows = allRows.filter(r => scoreFilter.has(r.score || 'D'));
+  visibleRows = scoreFilter === 'ALL' ? allRows.slice() : allRows.filter(r => (r.score || 'D') === scoreFilter);
   render(visibleRows);
 }
 
@@ -334,8 +357,8 @@ async function deepContact(encUrl) {
 // 批量深挖 A/B 类
 async function batchDeepAB() {
   if (!lastData) return;
-  const targets = visibleRows.filter(r => r.score === 'A' || r.score === 'B');
-  if (!targets.length) { alert('当前筛选后没有 A/B 类客户可深挖'); return; }
+  const targets = visibleRows.filter(r => devChecked.has(r.url) && (r.score === 'A' || r.score === 'B'));
+  if (!targets.length) { alert('请先勾选要深挖的 A/B 类客户'); return; }
   const aCount = targets.filter(r => r.score === 'A').length;
   const bCount = targets.filter(r => r.score === 'B').length;
   const btn = document.getElementById('batchDeep');
@@ -407,8 +430,8 @@ async function importLead(btn, encUrl) {
 
 async function batchImport() {
   if (!lastData) return;
-  const targets = visibleRows.filter(r => !importedSet.has(r.url));
-  if (!targets.length) { alert('当前没有未导入的客户'); return; }
+  const targets = visibleRows.filter(r => devChecked.has(r.url) && !importedSet.has(r.url));
+  if (!targets.length) { alert('请先勾选要导入的客户（未导入的）'); return; }
   const btn = document.getElementById('batchImport');
   const meta = document.getElementById('filterMeta');
   const total = targets.length; let done = 0, ok = 0;
@@ -468,7 +491,8 @@ function renderMgr() {
     box.innerHTML = '<div class="empty">客户管理库为空。去「客户开发」搜索并点「导入客户」即可沉淀到这里跟进。</div>';
     return;
   }
-  let html = '<table><thead><tr><th>公司/网站</th><th>评分</th><th>类型</th><th>联系方式</th><th>状态</th><th>备注</th><th>开发信</th><th>操作</th></tr></thead><tbody>';
+  const allChecked = managedLeads.length > 0 && managedLeads.every(m => mgrChecked.has(m.id));
+  let html = '<div class="table-wrap"><table><thead><tr><th><input type="checkbox" class="row-check" id="mgrCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>评分</th><th>类型</th><th>联系方式</th><th>状态</th><th>备注</th><th>开发信</th><th>操作</th></tr></thead><tbody>';
   managedLeads.forEach(m => {
     const emails = (m.emails && m.emails.length) ? m.emails : (m.email ? [m.email] : []);
     const contact = [];
@@ -480,7 +504,9 @@ function renderMgr() {
     const draftTag = m.draft_subject
       ? `<span style="color:#009a29">✓ ${escHtml(m.draft_subject).slice(0, 18)}</span>`
       : '<span style="color:#b0b3b8">未写</span>';
+    const checked = mgrChecked.has(m.id) ? ' checked' : '';
     html += `<tr>
+      <td><input type="checkbox" class="row-check" data-id="${m.id}"${checked}></td>
       <td><a href="${escHtml(m.url)}" target="_blank">${escHtml(m.name || m.url)}</a><br><span style="color:#8a8f99;font-size:11px">${escHtml(m.url)}</span></td>
       <td><span class="tag ${m.score}">${m.score}</span></td>
       <td>${escHtml(m.type || '')}</td>
@@ -495,8 +521,23 @@ function renderMgr() {
       </td>
     </tr>`;
   });
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
   box.innerHTML = html;
+  const allBox = document.getElementById('mgrCheckAll');
+  if (allBox) allBox.addEventListener('change', toggleMgrCheckAll);
+  document.querySelectorAll('#mgrList tbody .row-check').forEach(cb => cb.addEventListener('change', () => {
+    const id = parseInt(cb.dataset.id, 10);
+    if (cb.checked) mgrChecked.add(id); else mgrChecked.delete(id);
+  }));
+}
+
+function toggleMgrCheckAll(e) {
+  const checked = e.target.checked;
+  document.querySelectorAll('#mgrList tbody .row-check').forEach(cb => {
+    cb.checked = checked;
+    const id = parseInt(cb.dataset.id, 10);
+    if (checked) mgrChecked.add(id); else mgrChecked.delete(id);
+  });
 }
 
 async function mgrSetStatus(id, v) {
@@ -588,6 +629,40 @@ document.getElementById('mgrExport').addEventListener('click', () => {
   });
   download('﻿' + lines.join('\r\n'), `客户管理_${new Date().toISOString().slice(0, 10)}.csv`);
 });
+
+// 管理页批量操作
+async function mgrBatchStatus() {
+  const ids = Array.from(mgrChecked);
+  if (!ids.length) { alert('请先勾选要改状态的客户'); return; }
+  const status = document.getElementById('mgrBatchStatusSelect').value;
+  const meta = document.getElementById('mgrBatchMeta');
+  meta.textContent = '批量改状态中…';
+  let ok = 0;
+  for (const id of ids) {
+    await fetch('/api/leads', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) });
+    const m = managedLeads.find(x => x.id === id); if (m) { m.status = status; ok++; }
+  }
+  mgrChecked.clear();
+  meta.textContent = `已改 ${ok} 个客户状态为「${status}」`;
+  renderMgr();
+}
+async function mgrBatchDelete() {
+  const ids = Array.from(mgrChecked);
+  if (!ids.length) { alert('请先勾选要删除的客户'); return; }
+  if (!confirm(`确认删除选中的 ${ids.length} 个客户？此操作不可恢复。`)) return;
+  const meta = document.getElementById('mgrBatchMeta');
+  meta.textContent = '批量删除中…';
+  for (const id of ids) {
+    await fetch('/api/leads?id=' + id, { method: 'DELETE' });
+  }
+  managedLeads = managedLeads.filter(x => !mgrChecked.has(x.id));
+  mgrChecked.clear();
+  document.getElementById('mgrCnt').textContent = managedLeads.length;
+  meta.textContent = `已删除 ${ids.length} 个客户`;
+  renderMgr();
+}
+document.getElementById('mgrBatchStatus').addEventListener('click', mgrBatchStatus);
+document.getElementById('mgrBatchDelete').addEventListener('click', mgrBatchDelete);
 
 // 绑定批量按钮
 document.getElementById('batchImport').addEventListener('click', batchImport);
