@@ -44,6 +44,22 @@
   .lead-item input.note { width:220px; }
   .lead-item .info { font-size:12px; color:#4e5969; margin-top:6px; line-height:1.6; }
   .lead-item .info a { color:#165dff; }
+  .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:50; }
+  .modal-mask.show { display:flex; }
+  .modal { background:#fff; width:min(700px,94vw); max-height:88vh; overflow:auto; border-radius:12px; padding:20px 24px; }
+  .modal h3 { margin:0 0 4px; font-size:16px; }
+  .modal .sub2 { font-size:12px; color:#8a8f99; margin-bottom:10px; }
+  .modal label { font-size:12px; color:#4e5969; display:block; margin:12px 0 6px; }
+  .modal input, .modal textarea { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; }
+  .modal textarea { min-height:210px; resize:vertical; line-height:1.6; font-family:inherit; }
+  .modal .acts { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  .modal .hint { font-size:12px; color:#8a8f99; margin-top:10px; line-height:1.6; }
+  details.cfg { background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:12px 16px; margin-top:14px; }
+  details.cfg summary { cursor:pointer; font-size:13px; color:#165dff; font-weight:600; outline:none; }
+  details.cfg .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+  details.cfg label { font-size:12px; color:#4e5969; display:block; margin-bottom:5px; }
+  details.cfg input, details.cfg textarea { width:100%; padding:8px 10px; border:1px solid #d0d3d9; border-radius:7px; font-size:13px; }
+  details.cfg textarea { min-height:60px; resize:vertical; }
 </style>
 </head>
 <body>
@@ -74,6 +90,24 @@
     </div>
   </div>
 
+  <details class="cfg">
+    <summary>开发信设置（AI 生成用，自动保存）</summary>
+    <div class="grid">
+      <div>
+        <label>你的品牌名</label>
+        <input id="cfgBrand" placeholder="如 PinCraft Gifts" />
+      </div>
+      <div>
+        <label>发件人姓名</label>
+        <input id="cfgSender" placeholder="如 John / 杨昌任" />
+      </div>
+      <div style="grid-column:1/-1">
+        <label>卖点（MOQ / 交期 / 定制能力 / 价格等，越具体越好）</label>
+        <textarea id="cfgSelling" placeholder="如：MOQ 50pcs、7-12 天交货、免费打样、电镀/珐琅多种工艺、支持来图定制"></textarea>
+      </div>
+    </div>
+  </details>
+
   <div class="row">
     <button id="go">搜索客户</button>
     <button id="export" class="ghost" disabled>导出当前 CSV</button>
@@ -83,6 +117,7 @@
 
   <div class="row" style="margin-top:12px">
     <button class="mini" id="batchDeep" style="background:#00a76f;color:#fff">批量深挖 A/B 类（官网邮箱+验MX；A 额外反向搜邮）</button>
+    <button class="mini" id="batchDraft" style="background:#7c3aed;color:#fff;margin-left:8px">批量生成开发信（A/B）</button>
     <span class="meta" id="filterMeta" style="margin-left:6px"></span>
   </div>
 
@@ -91,6 +126,24 @@
   <div class="myleads">
     <h2>我的客户 <span class="cnt" id="mycnt">0</span></h2>
     <div id="mylist"><div class="empty">还没有保存客户。搜索后点每条右侧「保存」即可沉淀到这里，便于跟进。</div></div>
+  </div>
+</div>
+
+<div class="modal-mask" id="draftMask">
+  <div class="modal">
+    <h3 id="draftTitle">AI 开发信</h3>
+    <div class="sub2" id="draftSub"></div>
+    <label>主题</label>
+    <input id="draftSubject" placeholder="生成后自动填充，可手动修改" />
+    <label>正文</label>
+    <textarea id="draftBody" placeholder="点「生成开发信」由 DeepSeek 撰写…"></textarea>
+    <div class="acts">
+      <button id="draftGen">生成开发信</button>
+      <button class="ghost" id="draftCopy">复制全文</button>
+      <button class="ghost" id="draftGmail">用 Gmail 发送</button>
+      <button class="ghost" id="draftClose">关闭</button>
+    </div>
+    <div class="hint" id="draftHint"></div>
   </div>
 </div>
 
@@ -177,7 +230,8 @@ function render(rows) {
       <td style="color:#4e5969">${r.snippet}</td>
       <td>
         <button class="mini ghost" onclick="saveLead('${enc}')" ${saved ? 'disabled' : ''}>${saved ? '已存' : '保存'}</button><br>
-        <button class="mini" style="margin-top:6px" onclick="deepContact('${enc}')">深挖</button>
+        <button class="mini" style="margin-top:6px" onclick="deepContact('${enc}')">深挖</button><br>
+        <button class="mini ghost" style="margin-top:6px;color:#00a76f;border-color:#00a76f" onclick="openDraft('${enc}')">开发信</button>
       </td>
     </tr>`;
   });
@@ -275,6 +329,7 @@ function saveLead(encUrl) {
   myLeads.push({
     name: r.name, url: r.url, type: r.type, score: r.score,
     email: r.email, phone: r.phone, social: r.social, snippet: r.snippet,
+    draft: r.draft || null,
     status: '待联系', note: '', savedAt: new Date().toISOString().slice(0, 10)
   });
   saveMy();
@@ -323,12 +378,12 @@ function renderMy() {
 
 document.getElementById('export').addEventListener('click', () => {
   if (!allRows.length) return;
-  const head = ['公司名','网址','类型','评分','邮箱','电话','社媒','可收信','备注','摘要'];
+  const head = ['公司名','网址','类型','评分','邮箱','电话','社媒','可收信','备注','摘要','开发信主题','开发信正文'];
   const lines = [head.join(',')];
   allRows.forEach(r => {
     const emailStr = (r.emails && r.emails.length) ? r.emails.join('; ') : (r.email || '');
     const mxStr = r.mx === true ? '是' : (r.mx === false ? '否' : '');
-    const cells = [r.name, r.url, r.type, r.score, emailStr, r.phone, r.social, mxStr, r.note, r.snippet].map(esc);
+    const cells = [r.name, r.url, r.type, r.score, emailStr, r.phone, r.social, mxStr, r.note, r.snippet, (r.draft && r.draft.subject) || '', (r.draft && r.draft.body ? r.draft.body.replace(/\r?\n/g, '\\n') : '')].map(esc);
     lines.push(cells.join(','));
   });
   download('﻿' + lines.join('\r\n'), `徽章客户_${lastData.query.slice(0,16)}.csv`);
@@ -336,13 +391,15 @@ document.getElementById('export').addEventListener('click', () => {
 
 // 绑定批量深挖 A/B 类按钮
 document.getElementById('batchDeep').addEventListener('click', batchDeepAB);
+// 绑定批量生成开发信按钮
+document.getElementById('batchDraft').addEventListener('click', batchDraft);
 
 document.getElementById('exportMy').addEventListener('click', () => {
   if (!myLeads.length) { alert('还没有保存的客户'); return; }
-  const head = ['公司名','网址','类型','评分','邮箱','电话','社媒','跟进状态','备注','保存日期'];
+  const head = ['公司名','网址','类型','评分','邮箱','电话','社媒','跟进状态','备注','保存日期','开发信主题','开发信正文'];
   const lines = [head.join(',')];
   myLeads.forEach(m => {
-    const cells = [m.name, m.url, m.type, m.score, m.email, m.phone, m.social, m.status, m.note, m.savedAt].map(esc);
+    const cells = [m.name, m.url, m.type, m.score, m.email, m.phone, m.social, m.status, m.note, m.savedAt, (m.draft && m.draft.subject) || '', (m.draft && m.draft.body ? m.draft.body.replace(/\r?\n/g, '\\n') : '')].map(esc);
     lines.push(cells.join(','));
   });
   download('﻿' + lines.join('\r\n'), `我的客户_${new Date().toISOString().slice(0,10)}.csv`);
@@ -362,6 +419,123 @@ function esc(s) {
 }
 function escAttr(s) {
   return (s || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ===== AI 开发信（DeepSeek 生成 + Gmail 发送兜底 + 本地群发） =====
+const DRAFT_CFG_KEY = 'renseek_draft_cfg';
+let draftRow = null;
+
+function loadDraftCfg() {
+  try { return JSON.parse(localStorage.getItem(DRAFT_CFG_KEY) || '{}'); } catch { return {}; }
+}
+function saveDraftCfg() {
+  const cfg = {
+    brand: document.getElementById('cfgBrand').value,
+    sender: document.getElementById('cfgSender').value,
+    selling: document.getElementById('cfgSelling').value
+  };
+  localStorage.setItem(DRAFT_CFG_KEY, JSON.stringify(cfg));
+}
+['cfgBrand', 'cfgSender', 'cfgSelling'].forEach(id => {
+  const el = document.getElementById(id);
+  const cfg = loadDraftCfg();
+  const key = id.replace('cfg', '').toLowerCase();
+  if (key in cfg) el.value = cfg[key];
+  el.addEventListener('change', saveDraftCfg);
+});
+
+function openDraft(encUrl) {
+  const url = decodeURIComponent(encUrl);
+  const r = (lastData && lastData.results.find(x => x.url === url))
+         || myLeads.find(x => x.url === url);
+  if (!r) return;
+  draftRow = r;
+  document.getElementById('draftTitle').textContent = 'AI 开发信 · ' + (r.name || r.url);
+  document.getElementById('draftSub').textContent = r.url;
+  document.getElementById('draftSubject').value = (r.draft && r.draft.subject) || '';
+  document.getElementById('draftBody').value = (r.draft && r.draft.body) || '';
+  document.getElementById('draftHint').textContent = '';
+  document.getElementById('draftMask').classList.add('show');
+}
+document.getElementById('draftClose').addEventListener('click', () => {
+  document.getElementById('draftMask').classList.remove('show');
+});
+document.getElementById('draftMask').addEventListener('click', (e) => {
+  if (e.target.id === 'draftMask') e.currentTarget.classList.remove('show');
+});
+
+async function genOneDraft(r) {
+  const cfg = loadDraftCfg();
+  const resp = await fetch('/api/draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      company: r.name || '', website: r.url, product: document.getElementById('product').value,
+      sellingPoints: cfg.selling || '', brand: cfg.brand || '', senderName: cfg.sender || '',
+      senderEmail: '', type: r.type || '', snippet: r.snippet || ''
+    })
+  });
+  const d = await resp.json();
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+document.getElementById('draftGen').addEventListener('click', async () => {
+  if (!draftRow) return;
+  saveDraftCfg();
+  const btn = document.getElementById('draftGen');
+  const hint = document.getElementById('draftHint');
+  btn.disabled = true; btn.textContent = '生成中…'; hint.textContent = '';
+  try {
+    const d = await genOneDraft(draftRow);
+    document.getElementById('draftSubject').value = d.subject || '';
+    document.getElementById('draftBody').value = d.body || '';
+    draftRow.draft = { subject: d.subject, body: d.body };
+    hint.textContent = '已生成，可手动微调后发送 / 复制。';
+    if (lastData) render(allRows);
+  } catch (e) {
+    hint.textContent = '生成失败：' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '生成开发信';
+  }
+});
+
+document.getElementById('draftCopy').addEventListener('click', () => {
+  const txt = 'Subject: ' + document.getElementById('draftSubject').value + '\n\n' + document.getElementById('draftBody').value;
+  navigator.clipboard.writeText(txt).then(() => {
+    document.getElementById('draftHint').textContent = '已复制到剪贴板。';
+  });
+});
+
+document.getElementById('draftGmail').addEventListener('click', () => {
+  if (!draftRow) return;
+  const email = (draftRow.emails && draftRow.emails[0]) || draftRow.email;
+  if (!email) { document.getElementById('draftHint').textContent = '该客户还没有邮箱，先点「深挖」抓官网邮箱再发送。'; return; }
+  const su = encodeURIComponent(document.getElementById('draftSubject').value);
+  const body = encodeURIComponent(document.getElementById('draftBody').value);
+  window.open('https://mail.google.com/mail/?view=cm&to=' + encodeURIComponent(email) + '&su=' + su + '&body=' + body, '_blank');
+});
+
+// 批量生成开发信（A/B 类），缓存到 row.draft，随后可导出含开发信的 CSV
+async function batchDraft() {
+  if (!lastData) return;
+  const targets = lastData.results.filter(r => r.score === 'A' || r.score === 'B');
+  if (!targets.length) { alert('没有 A/B 类客户（先搜索一次）'); return; }
+  const btn = document.getElementById('batchDraft');
+  const meta = document.getElementById('filterMeta');
+  const total = targets.length; let done = 0, ok = 0;
+  btn.disabled = true; meta.textContent = '批量生成开发信 0/' + total + ' …';
+  for (const r of targets) {
+    try {
+      const d = await genOneDraft(r);
+      if (d.subject) { r.draft = { subject: d.subject, body: d.body }; ok++; }
+    } catch {}
+    done++;
+    meta.textContent = '批量生成开发信 ' + done + '/' + total + ' · 成功 ' + ok;
+  }
+  btn.disabled = false;
+  if (lastData) render(allRows);
+  meta.textContent = `批量生成完成：${total} 条 → 成功 ${ok} 封开发信（已缓存，可导出含开发信的 CSV）`;
 }
 
 renderMy();
