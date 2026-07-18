@@ -46,8 +46,8 @@ export async function onRequest(context) {
   };
   const langName = LANG_NAMES[targetLang] || targetLang;
 
-  // 没有中文就直接返回原值
-  if (!hasChinese(product) && !hasChinese(country) && !hasChinese(exclude)) {
+  // 只有目标语言为英语且未检测到中文时，才直接返回原值，避免无意义的 API 调用
+  if (targetLang === 'English' && !hasChinese(product) && !hasChinese(country) && !hasChinese(exclude)) {
     return new Response(
       JSON.stringify({ product, country, exclude, target: targetLang, langName, translated: false }),
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } }
@@ -57,16 +57,16 @@ export async function onRequest(context) {
   const base = (env.DEEPSEEK_BASE || 'https://api.deepseek.com/v1').replace(/\/$/, '');
   const model = env.DEEPSEEK_MODEL || 'deepseek-chat';
 
-  const system = `你是一名外贸关键词翻译助手。请把用户输入的「产品、目标国家、排除词」中检测到的中文内容翻译成${langName}搜索词；非中文且非${langName}的内容保持原样不变。
+  const system = `你是一名外贸关键词翻译助手。目标语言是${langName}。请把用户输入的「产品、目标国家、排除词」中所有非${langName}内容（包括中文、英文等）翻译成${langName}搜索词；如果原文已经是${langName}，则直接保留原样，不要改动。
 要求：
 - 只输出 JSON，不要解释、不要 markdown
-- 产品：中文必须翻译成${langName}具体品类搜索词，如"定制徽章"→"${targetLang === 'Japanese' ? 'オリジナルピンバッジ 製作' : 'custom lapel pins'}"（${langName}）
-- 国家：中文必须翻译成${langName}国家名或地区名，如"美国"→"${targetLang === 'Japanese' ? 'アメリカ' : 'United States'}"（${langName}）
-- 排除词：如果包含中文，逐个词/短语翻译成${langName}，保持空格分隔，如"中国工厂 阿里巴巴"→"${targetLang === 'Japanese' ? '中国工場 アリババ' : 'china factory alibaba'}"（${langName}）
+- 产品：翻译成${langName}具体品类搜索词
+- 国家：翻译成${langName}国家名或地区名
+- 排除词：逐个词/短语翻译成${langName}，保持空格分隔
 - 重要：输出必须是${langName}，不能输出英文；如果原文已经是${langName}则直接保留
 - 输出格式：{"product": "...", "country": "...", "exclude": "..."}`;
 
-  const user = `请将以下字段中的中文翻译成${langName}（保留非中文字符不变，原文已经是${langName}的保持原样）：
+  const user = `请将以下字段翻译成${langName}（已经是${langName}的保留原样）：
 产品：${product || '（未提供）'}
 目标国家：${country || '（未提供）'}
 排除词：${exclude || '（未提供）'}`;

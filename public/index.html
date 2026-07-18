@@ -269,13 +269,26 @@ function translatedValue(id) {
   return document.getElementById(id + 'Translated').value || document.getElementById(id).value;
 }
 
+const BUYER_TERMS = {
+  English: { dist: 'distributor', promo: 'promotional products', wholesale: 'wholesale', buyBulk: 'buy bulk' },
+  Spanish: { dist: 'distribuidor', promo: 'productos promocionales', wholesale: 'venta al por mayor', buyBulk: 'comprar al por mayor' },
+  French: { dist: 'distributeur', promo: 'produits promotionnels', wholesale: 'vente en gros', buyBulk: 'acheter en gros' },
+  German: { dist: 'Distributor', promo: 'Werbeartikel', wholesale: 'Großhandel', buyBulk: 'Großhandel kaufen' },
+  Russian: { dist: 'дистрибьютор', promo: 'рекламная продукция', wholesale: 'оптовая продажа', buyBulk: 'покупать оптом' },
+  Portuguese: { dist: 'distribuidor', promo: 'produtos promocionais', wholesale: 'atacado', buyBulk: 'comprar atacado' },
+  Italian: { dist: 'distributore', promo: 'prodotti promozionali', wholesale: 'ingrosso', buyBulk: 'acquistare all ingrosso' },
+  Japanese: { dist: '卸売業者', promo: '販促品', wholesale: '卸売', buyBulk: '大口買い' }
+};
+
 function refreshQuery() {
   const p = translatedValue('product');
   const c = translatedValue('country');
   const ex = translatedValue('exclude');
-  let q = `${p} distributor ${c} promotional products`;
+  const targetLang = document.getElementById('targetLang').value;
+  const t = BUYER_TERMS[targetLang] || BUYER_TERMS.English;
+  let q = `${p} ${t.dist} ${c} ${t.promo}`;
   if (ex) q += ' -' + ex.split(/[\s,，]+/).filter(Boolean).join(' -');
-  document.getElementById('qpreview').value = q + '  |  ' + `${p} wholesale ${c} buy bulk`;
+  document.getElementById('qpreview').value = q + '  |  ' + `${p} ${t.wholesale} ${c} ${t.buyBulk}`;
 }
 
 function syncTranslatedDefaults() {
@@ -299,6 +312,7 @@ function onSourceInput(id) {
 });
 syncTranslatedDefaults();
 refreshQuery();
+document.getElementById('targetLang').addEventListener('change', refreshQuery);
 
 async function doTranslate() {
   const product = document.getElementById('product').value;
@@ -307,7 +321,8 @@ async function doTranslate() {
   const targetLang = document.getElementById('targetLang').value;
   const meta = document.getElementById('meta');
 
-  if (!hasChinese(product) && !hasChinese(country) && !hasChinese(exclude)) {
+  const needsTranslation = targetLang !== 'English' || hasChinese(product) || hasChinese(country) || hasChinese(exclude);
+  if (!needsTranslation) {
     syncTranslatedDefaults();
     refreshQuery();
     meta.textContent = '未检测到中文，已直接使用原文。';
@@ -348,7 +363,7 @@ document.getElementById('go').addEventListener('click', async () => {
   const product = document.getElementById('product').value;
   const country = document.getElementById('country').value;
   const exclude = document.getElementById('exclude').value;
-  if (hasChinese(product) || hasChinese(country) || hasChinese(exclude)) {
+  if (hasChinese(product) || hasChinese(country) || hasChinese(exclude) || document.getElementById('targetLang').value !== 'English') {
     const ok = await doTranslate();
     if (!ok) return;
   }
