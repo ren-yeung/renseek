@@ -1,2 +1,7 @@
 name = "renseek"
 pages_build_output_dir = "public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "renseek"
+database_id = "22d1f7b3-c2dc-445a-97e3-0a79c5e56b51"
