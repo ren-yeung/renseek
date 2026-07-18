@@ -28,20 +28,19 @@ function classify(item) {
   const text = ((item.name || '') + ' ' + (item.snippet || '') + ' ' + (item.siteName || '')).toLowerCase();
   const dom = domainOf(item.url || '');
   const sellerKw = ['manufacturer', 'factory', 'made-in-china', 'hisupplier', 'alibaba',
-    'oem', 'odm', 'supplier from china', 'china factory', 'shenzhen', 'guangdong'];
+    'oem', 'odm', 'supplier from china', 'china factory', 'shenzhen', 'guangdong', 'china wholesale', 'from china'];
   const buyerKw = ['distributor', 'promotional products', 'promotional', 'wholesale', 'gift',
     'souvenir', 'event', 'agency', 'inc', 'llc', 'corp', 'company', 'based in', 'we supply',
-    'request a quote', 'get a quote', 'linkedin.com/company'];
+    'request a quote', 'get a quote', 'linkedin.com/company', 'reseller', 'dealer'];
 
+  // 卖家优先：制造商/中国供应链一律标 D 剔除，不被买家词覆盖（避免中国工厂误判为 A）
   const isSeller = sellerKw.some(k => text.includes(k)) || dom.endsWith('.cn');
-  const isBuyer = buyerKw.some(k => text.includes(k));
-
-  if (dom.endsWith('.cn') || (isSeller && !isBuyer))
+  if (isSeller)
     return { type: '工厂/竞争对手(建议排除)', score: 'D', note: '疑似制造商/中国供应链，剔除' };
-  if (isBuyer && !isSeller)
-    return { type: '潜在客户(经销商/定制商)', score: 'A', note: '疑似海外买家，优先开发' };
+
+  const isBuyer = buyerKw.some(k => text.includes(k));
   if (isBuyer)
-    return { type: '潜在客户', score: 'A', note: '命中买家关键词' };
+    return { type: '潜在客户(经销商/定制商)', score: 'A', note: '疑似海外买家，优先开发' };
   return { type: '待确认', score: 'B', note: '需人工/LLM 复核' };
 }
 
