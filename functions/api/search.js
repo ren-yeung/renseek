@@ -314,6 +314,13 @@ export async function onRequest(context) {
   const n = Math.min(parseInt(url.searchParams.get('n') || '10', 10) || 10, 30);
   const source = (url.searchParams.get('source') || 'bocha').trim(); // bocha / google_maps / google_cse / all
 
+  // 可选参数：自定义搜索词列表（来自扩词助手），替换默认的 bochaQueries/mapsQueries
+  let queries = [];
+  try {
+    const qs = url.searchParams.get('queries');
+    if (qs) queries = JSON.parse(qs);
+  } catch { /* 忽略解析错误，沿用默认搜索词 */ }
+
   const BUYER_TERMS = {
     English: { dist: 'distributor', promo: 'promotional products', wholesale: 'wholesale', buyBulk: 'buy bulk' },
     Spanish: { dist: 'distribuidor', promo: 'productos promocionales', wholesale: 'venta al por mayor', buyBulk: 'comprar al por mayor' },
@@ -365,14 +372,21 @@ export async function onRequest(context) {
   }
 
   // 多买家词召回（博查用），Google 地图用更口语的本地检索词
-  const bochaQueries = [
-    `${product} ${t.dist} ${country} ${t.promo}`,
-    `${product} ${t.wholesale} ${country} ${t.buyBulk}`
-  ];
-  const mapsQueries = [
-    `${product} ${t.wholesale} ${country}`,
-    `${product} ${t.promo} ${country}`
-  ];
+  // 当提供了自定义 queries 参数（来自扩词助手），直接使用用户选择的搜索词
+  let bochaQueries, mapsQueries;
+  if (queries && queries.length > 0) {
+    bochaQueries = [...queries];
+    mapsQueries = [...queries];
+  } else {
+    bochaQueries = [
+      `${product} ${t.dist} ${country} ${t.promo}`,
+      `${product} ${t.wholesale} ${country} ${t.buyBulk}`
+    ];
+    mapsQueries = [
+      `${product} ${t.wholesale} ${country}`,
+      `${product} ${t.promo} ${country}`
+    ];
+  }
 
   // 当目标不是中国市场时，自动追加中国平台/供应链排除词，让博查尽量少召回中国站
   const isTargetingChina = target === 'Chinese' || country.toLowerCase() === 'china' || country.toLowerCase() === 'chinese';

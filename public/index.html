@@ -151,6 +151,16 @@
     .score-select, .email-select { max-width: 130px; }
   }
 
+  /* 扩词助手样式 */
+  .suggest-section { transition: all .2s; }
+  .suggest-item { display:flex; align-items:center; gap:6px; padding:6px 10px; background:#f7f8fa; border:1px solid var(--border); border-radius:7px; cursor:pointer; user-select:none; transition:all .15s; }
+  .suggest-item:hover { border-color:var(--accent); background:#eff6ff; }
+  .suggest-item.checked { border-color:var(--accent); background:#eff6ff; }
+  .suggest-item input { margin:0; }
+  .suggest-item .q-text { font-size:13px; line-height:1.4; }
+  .suggest-loading { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spinner .6s linear infinite; vertical-align:middle; margin-right:6px; }
+  @keyframes spinner { to { transform:rotate(360deg); } }
+
   @media (max-width: 480px) {
     h1 { font-size: 17px; }
     .nav-item { font-size: 13px; padding: 9px 10px; }
@@ -185,6 +195,40 @@
 
   <!-- ============ 客户开发视图 ============ -->
   <div id="devView" class="view">
+
+    <!-- 扩词助手 -->
+    <div class="suggest-section" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px">
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:2;min-width:200px">
+          <label style="font-size:12px;color:#4e5969;display:block;margin-bottom:6px">产品词扩词助手（输入核心产品词，AI 生成搜索词变体）</label>
+          <div style="display:flex;gap:8px">
+            <input id="suggestProduct" value="custom lapel pins" placeholder="如 metal badges / 定制徽章" style="flex:1;padding:9px 11px;border:1px solid #d0d3d9;border-radius:7px;font-size:14px;font-family:inherit" />
+            <button id="suggestBtn" class="ghost" style="white-space:nowrap">生成搜索词</button>
+          </div>
+        </div>
+        <div style="flex:1;min-width:150px">
+          <label style="font-size:12px;color:#4e5969;display:block;margin-bottom:6px">目标国家</label>
+          <input id="suggestCountry" value="United States" placeholder="如 United States" style="width:100%;padding:9px 11px;border:1px solid #d0d3d9;border-radius:7px;font-size:14px;font-family:inherit" />
+        </div>
+        <div style="flex:1;min-width:150px">
+          <label style="font-size:12px;color:#4e5969;display:block;margin-bottom:6px">排除词</label>
+          <input id="suggestExclude" value="china factory" placeholder="如 china factory" style="width:100%;padding:9px 11px;border:1px solid #d0d3d9;border-radius:7px;font-size:14px;font-family:inherit" />
+        </div>
+      </div>
+      <div id="suggestResults" style="margin-top:14px;display:none">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <span style="font-size:13px;font-weight:600">可选的搜索词变体：</span>
+          <span style="font-size:12px;color:var(--muted)" id="suggestCount"></span>
+          <span style="flex:1"></span>
+          <button id="suggestUseSelected" class="mini" style="background:var(--accent-green);color:#fff" disabled>用选中词搜索</button>
+          <button id="suggestSelectAll" class="mini ghost">全选</button>
+          <button id="suggestDeselectAll" class="mini ghost">取消全选</button>
+        </div>
+        <div id="suggestList" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
+      <div id="suggestStatus" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+    </div>
+
     <div class="form">
       <div class="full form-top">
         <div style="flex:1">
@@ -498,7 +542,7 @@ document.getElementById('go').addEventListener('click', async () => {
   await doSearch();
 });
 
-async function doSearch() {
+async function doSearch(queries) {
   const product = translatedValue('product');
   const country = translatedValue('country');
   const exclude = translatedValue('exclude');
@@ -509,7 +553,10 @@ async function doSearch() {
   try {
     const targetLang = document.getElementById('targetLang').value;
     const source = document.getElementById('source').value;
-    const url = `/api/search?product=${encodeURIComponent(product)}&country=${encodeURIComponent(country)}&exclude=${encodeURIComponent(exclude)}&target=${encodeURIComponent(targetLang)}&n=${encodeURIComponent(n)}&source=${encodeURIComponent(source)}`;
+    let url = `/api/search?product=${encodeURIComponent(product)}&country=${encodeURIComponent(country)}&exclude=${encodeURIComponent(exclude)}&target=${encodeURIComponent(targetLang)}&n=${encodeURIComponent(n)}&source=${encodeURIComponent(source)}`;
+    if (queries && queries.length > 0) {
+      url += '&queries=' + encodeURIComponent(JSON.stringify(queries));
+    }
     const r = await fetch(url);
     const data = await r.json();
     if (data.error) { box.innerHTML = `<div class="err">错误：${escHtml(data.error)}</div>`; meta.textContent=''; return; }
@@ -1358,6 +1405,151 @@ document.getElementById('draftResend').addEventListener('click', async () => {
   } finally {
     btn.disabled = false; btn.textContent = '云端发送';
   }
+});
+
+// ========== 扩词助手（产品词扩词）==========
+let suggestQueries = [];    // 当前生成的搜索词列表
+let suggestChecked = new Set();  // 已勾选的搜索词索引
+
+// 同步扩词助手的产品词与主表单
+document.getElementById('suggestProduct').addEventListener('input', () => {
+  document.getElementById('product').value = document.getElementById('suggestProduct').value;
+  // 如果翻译结果为空，同步过去
+  if (!document.getElementById('productTranslated').value) {
+    document.getElementById('productTranslated').value = document.getElementById('suggestProduct').value;
+  }
+  refreshQuery();
+});
+// 反向同步
+document.getElementById('product').addEventListener('input', () => {
+  document.getElementById('suggestProduct').value = document.getElementById('product').value;
+});
+
+async function suggestQueries() {
+  const product = document.getElementById('suggestProduct').value.trim();
+  const country = document.getElementById('suggestCountry').value.trim();
+  const exclude = document.getElementById('suggestExclude').value.trim();
+  const status = document.getElementById('suggestStatus');
+  const results = document.getElementById('suggestResults');
+  const list = document.getElementById('suggestList');
+
+  if (!product) { status.textContent = '请输入产品词'; return; }
+
+  status.innerHTML = '<span class="suggest-loading"></span> AI 正在生成搜索词变体…';
+  results.style.display = 'none';
+  suggestChecked.clear();
+
+  try {
+    const resp = await fetch('/api/suggest-queries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product, country, target: 'English', exclude })
+    });
+    const data = await resp.json();
+    if (data.error) { status.textContent = '扩词失败：' + data.error; return; }
+
+    const queries = data.queries || [];
+    suggestQueries = queries;
+    if (!queries.length) { status.textContent = 'AI 未生成搜索词，请重试'; return; }
+
+    // 渲染复选框
+    list.innerHTML = queries.map((q, i) => {
+      const checked = i < 6 ? ' checked' : '';  // 默认勾选前 6 个
+      if (i < 6) suggestChecked.add(i);
+      return `<label class="suggest-item${checked}" data-idx="${i}">
+        <input type="checkbox" class="suggest-cb" data-idx="${i}"${checked}>
+        <span class="q-text">${escHtml(q)}</span>
+      </label>`;
+    }).join('');
+
+    // 绑定复选框点击事件
+    list.querySelectorAll('.suggest-cb').forEach(cb => {
+      cb.addEventListener('change', onSuggestCheckChange);
+    });
+    // 点击标签区域切换勾选
+    list.querySelectorAll('.suggest-item').forEach(label => {
+      label.addEventListener('click', (e) => {
+        if (e.target.tagName === 'INPUT') return;
+        const cb = label.querySelector('.suggest-cb');
+        cb.checked = !cb.checked;
+        onSuggestCheckChange.call(cb, { target: cb });
+      });
+    });
+
+    results.style.display = 'block';
+    updateSuggestUI();
+    status.textContent = `AI 生成了 ${queries.length} 条搜索词变体（默认勾选前 6 条）`;
+  } catch (e) {
+    status.textContent = '扩词请求失败：' + e.message;
+  }
+}
+
+function onSuggestCheckChange(e) {
+  const idx = parseInt(e.target.dataset.idx, 10);
+  const label = e.target.closest('.suggest-item');
+  if (e.target.checked) {
+    suggestChecked.add(idx);
+    label.classList.add('checked');
+  } else {
+    suggestChecked.delete(idx);
+    label.classList.remove('checked');
+  }
+  updateSuggestUI();
+}
+
+function updateSuggestUI() {
+  const count = document.getElementById('suggestCount');
+  const btn = document.getElementById('suggestUseSelected');
+  count.textContent = `已选 ${suggestChecked.size}/${suggestQueries.length} 条`;
+  btn.disabled = suggestChecked.size === 0;
+}
+
+document.getElementById('suggestBtn').addEventListener('click', suggestQueries);
+document.getElementById('suggestProduct').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') suggestQueries();
+});
+document.getElementById('suggestCountry').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') suggestQueries();
+});
+document.getElementById('suggestExclude').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') suggestQueries();
+});
+
+document.getElementById('suggestSelectAll').addEventListener('click', () => {
+  document.querySelectorAll('.suggest-cb').forEach(cb => {
+    cb.checked = true;
+    const idx = parseInt(cb.dataset.idx, 10);
+    suggestChecked.add(idx);
+    cb.closest('.suggest-item').classList.add('checked');
+  });
+  updateSuggestUI();
+});
+
+document.getElementById('suggestDeselectAll').addEventListener('click', () => {
+  document.querySelectorAll('.suggest-cb').forEach(cb => {
+    cb.checked = false;
+    const idx = parseInt(cb.dataset.idx, 10);
+    suggestChecked.delete(idx);
+    cb.closest('.suggest-item').classList.remove('checked');
+  });
+  updateSuggestUI();
+});
+
+document.getElementById('suggestUseSelected').addEventListener('click', async () => {
+  const selected = Array.from(suggestChecked).sort((a, b) => a - b).map(i => suggestQueries[i]);
+  if (!selected.length) { alert('请先勾选要使用的搜索词'); return; }
+
+  // 先翻译（如果必要）
+  const product = document.getElementById('product').value;
+  const country = document.getElementById('country').value;
+  const exclude = document.getElementById('exclude').value;
+  const targetLang = document.getElementById('targetLang').value;
+  if (hasChinese(product) || hasChinese(country) || hasChinese(exclude) || targetLang !== 'English') {
+    const ok = await doTranslate();
+    if (!ok) return;
+  }
+
+  await doSearch(selected);
 });
 
 // 页面加载时拉一次管理库计数（不显示列表，仅填充 Tab 角标 + 已导入标记）
