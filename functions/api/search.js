@@ -255,7 +255,7 @@ export async function onRequest(context) {
     const order = { A: 0, B: 1, C: 2, D: 3 };
     merged.sort((a, b) => (order[a.score] || 9) - (order[b.score] || 9));
     return new Response(
-      JSON.stringify({ query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).join(' | '), count: merged.length, results: merged }),
+      JSON.stringify({ version: 'c1f8b8c', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).join(' | '), count: merged.length, results: merged }),
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   } catch (e) {
     return new Response(
