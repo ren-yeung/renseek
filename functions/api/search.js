@@ -14,19 +14,31 @@ const CN_DOMAINS = new Set([
   'globalsources.com', 'ec21.com', 'tradekey.com', 'dhgate.com', 'aliexpress.com',
   'china.cn', 'chinan.cn', 'yiwu.cn', 'cantonfair.org.cn', 'madeinchina.com',
   'chinavasion.com', 'tomtop.com', 'banggood.com', 'lightinthebox.com', 'dx.com',
-  'suning.com', 'dangdang.com', 'gome.com.cn', 'vip.com', 'joom.com'
+  'suning.com', 'dangdang.com', 'gome.com.cn', 'vip.com', 'joom.com',
+  'hktdc.com', 'hktdc.org', 'ecplaza.net', 'chemnet.com',
+  'ccwto.com', 'cnweike.com', 'itinr.com', 'yellowscholars.com',
+  'manufacturer.com', 'topchinasupplier.com', 'chinasuppliers.com',
+  'chinasourcing.com', 'sourcingmap.com', 'chinese168.com',
+  'ecvv.com', 'eastday.com', 'china.org.cn', 'shangmuguan.com'
 ]);
 
 function isChinaSite(item) {
-  const dom = domainOf(item.url || '').replace(/^www\./, '');
+  let dom = domainOf(item.url || '');
+  // 统一去掉常见子域名前缀，只保留主域名+二级域名
+  dom = dom.replace(/^(?:www|m|mobile|wap|en|cn|ru|de|fr|es|pt|it|jp|kr|ar|th|vn|id|my|tr|nl|pl|sv|da|no|fi|cs|hu|ro|uk|bg|el|he|hi|ms|tl|zh|zh-cn|zh-hk|zh-tw)\./i, '');
   if (CN_DOMAINS.has(dom)) return true;
   if (dom.endsWith('.cn')) return true;
+  // 子域名检测：xxx.made-in-china.com → 匹配 made-in-china.com
+  for (const base of CN_DOMAINS) {
+    if (dom.endsWith('.' + base)) return true;
+  }
   const text = ((item.name || '') + ' ' + (item.snippet || '') + ' ' + (item.siteName || '')).toLowerCase();
   const cnKw = [
     '1688', 'alibaba', 'made-in-china', 'made in china', 'china supplier', 'chinese manufacturer',
     'shenzhen', 'guangdong', 'yiwu', 'china factory', 'manufacturer in china', 'supplier from china',
     '中国', '中國', '阿里巴巴', '淘宝', '天貓', '天猫', '京东', '拼多多', '中国制造', '中国工厂',
-    '厂家', '供应商'
+    '厂家', '供应商', '中国制造网', '制造网', '厂家直销', '工厂直销', '批发', '批发价',
+    '全球速卖通', '环球资源', '中国供应商', '外贸邦', '外贸圈'
   ];
   return cnKw.some(k => text.includes(k));
 }
