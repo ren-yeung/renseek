@@ -257,9 +257,12 @@
       <span class="meta" id="mgrMeta"></span>
     </div>
     <div class="row" style="margin-top:12px">
-      <button class="mini" id="mgrBatchStatus" style="background:#165dff;color:#fff">批量改状态</button>
-      <select id="mgrBatchStatusSelect" style="margin-left:6px;padding:5px 10px;border:1px solid #d0d3d9;border-radius:6px;font-size:13px">
-        <option>待联系</option><option>已联系</option><option>已回复</option><option>已成交</option>
+      <select id="mgrBatchStatusSelect" class="mini" style="background:#165dff;color:#fff;border:none;padding:8px 28px 8px 12px;border-radius:6px;font-size:13px;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22%3E%3Cpath fill=%22%23fff%22 d=%22M6 8L1 3h10z%22/%3E%3C/svg%3E');background-repeat:no-repeat;background-position:right 10px center">
+        <option value="">批量改状态 ▼</option>
+        <option>待联系</option>
+        <option>已联系</option>
+        <option>已回复</option>
+        <option>已成交</option>
       </select>
       <button class="mini ghost" id="mgrBatchDelete" style="color:#d4380d;border-color:#d4380d;margin-left:8px">批量删除</button>
       <button class="mini" id="mgrBatchVerify" style="background:#009a29;color:#fff;margin-left:8px">批量验证邮箱</button>
@@ -949,9 +952,11 @@ document.getElementById('mgrExport').addEventListener('click', () => {
 
 // 管理页批量操作
 async function mgrBatchStatus() {
+  const sel = document.getElementById('mgrBatchStatusSelect');
+  const status = sel.value;
+  if (!status) return;
   const ids = Array.from(mgrChecked);
-  if (!ids.length) { alert('请先勾选要改状态的客户'); return; }
-  const status = document.getElementById('mgrBatchStatusSelect').value;
+  if (!ids.length) { alert('请先勾选要改状态的客户'); sel.value = ''; return; }
   const meta = document.getElementById('mgrBatchMeta');
   meta.textContent = '批量改状态中…';
   let ok = 0;
@@ -960,6 +965,7 @@ async function mgrBatchStatus() {
     const m = managedLeads.find(x => x.id === id); if (m) { m.status = status; ok++; }
   }
   mgrChecked.clear();
+  sel.value = '';
   meta.textContent = `已改 ${ok} 个客户状态为「${status}」`;
   renderMgr();
 }
@@ -1027,7 +1033,7 @@ async function mgrBatchVerify() {
   meta.textContent = `已验证 ${ok} / ${targets.length} 个客户`;
   renderMgr();
 }
-document.getElementById('mgrBatchStatus').addEventListener('click', mgrBatchStatus);
+document.getElementById('mgrBatchStatusSelect').addEventListener('change', mgrBatchStatus);
 document.getElementById('mgrBatchDelete').addEventListener('click', mgrBatchDelete);
 document.getElementById('mgrBatchVerify').addEventListener('click', mgrBatchVerify);
 
