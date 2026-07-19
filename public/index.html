@@ -255,6 +255,7 @@
         <option>待联系</option><option>已联系</option><option>已回复</option><option>已成交</option>
       </select>
       <button class="mini ghost" id="mgrBatchDelete" style="color:#d4380d;border-color:#d4380d;margin-left:8px">批量删除</button>
+      <button class="mini" id="mgrBatchVerify" style="background:#009a29;color:#fff;margin-left:8px">批量验证邮箱</button>
       <span class="meta" id="mgrBatchMeta"></span>
     </div>
     <div id="mgrList" style="margin-top:16px"></div>
@@ -960,8 +961,58 @@ async function mgrBatchDelete() {
   meta.textContent = `已删除 ${ids.length} 个客户`;
   renderMgr();
 }
+async function mgrBatchVerify() {
+  const ids = Array.from(mgrChecked);
+  if (!ids.length) { alert('请先勾选要验证的客户'); return; }
+  const targets = ids.map(id => managedLeads.find(m => m.id === id)).filter(Boolean).filter(m => {
+    const emails = (m.emails && m.emails.length) ? m.emails : (m.email ? [m.email] : []);
+    return emails.length > 0;
+  });
+  if (!targets.length) { alert('勾选中没有含邮箱的客户'); return; }
+  if (!confirm(`确认验证 ${targets.length} 个客户的邮箱？`)) return;
+
+  const meta = document.getElementById('mgrBatchMeta');
+  meta.textContent = `批量验证中… 0 / ${targets.length}`;
+  let done = 0, ok = 0;
+  for (const m of targets) {
+    const emails = (m.emails && m.emails.length) ? m.emails : (m.email ? [m.email] : []);
+    try {
+      const resp = await fetch('/api/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails, concurrency: 5 })
+      });
+      const data = await resp.json();
+      const results = data.results || [];
+      const detail = {};
+      let bestScore = -1, bestStatus = 'invalid';
+      results.forEach(r => {
+        detail[r.email] = r;
+        if (typeof r.score === 'number' && r.score > bestScore) { bestScore = r.score; bestStatus = r.status; }
+      });
+      m.email_verify = detail;
+      m.email_status = bestStatus;
+      m.email_score = bestScore >= 0 ? bestScore : 0;
+      await fetch('/api/leads', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: m.id, email_status: m.email_status, email_score: m.email_score, email_verify: detail })
+      });
+      ok++;
+    } catch (e) {
+      console.error('批量验证失败 id=' + m.id, e);
+    }
+    done++;
+    meta.textContent = `批量验证中… ${done} / ${targets.length}`;
+    renderMgr();
+  }
+  mgrChecked.clear();
+  meta.textContent = `已验证 ${ok} / ${targets.length} 个客户`;
+  renderMgr();
+}
 document.getElementById('mgrBatchStatus').addEventListener('click', mgrBatchStatus);
 document.getElementById('mgrBatchDelete').addEventListener('click', mgrBatchDelete);
+document.getElementById('mgrBatchVerify').addEventListener('click', mgrBatchVerify);
 
 // 绑定批量按钮
 document.getElementById('batchImport').addEventListener('click', batchImport);
