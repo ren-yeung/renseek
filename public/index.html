@@ -68,6 +68,8 @@
   .ops button { margin:0; }
   .score-select { padding:2px 6px; font-size:12px; border-radius:6px; border:1px solid #d0d3d9; margin-left:6px; }
   .email-select { padding:2px 6px; font-size:12px; border-radius:6px; border:1px solid #d0d3d9; margin-left:6px; max-width: 160px; }
+  .wa-btn { display:inline-block; margin-top:2px; padding:2px 9px; font-size:11px; border-radius:6px; border:1px solid #25D366; background:#25D366; color:#fff; cursor:pointer; font-weight:600; }
+  .wa-btn:hover { background:#1ebe5a; }
   .row-check { width:16px; height:16px; cursor:pointer; }
   #editMask .form { margin:0; }
   #editMask .form input, #editMask .form textarea { margin-bottom:4px; }
@@ -211,6 +213,7 @@
       <button id="draftGen">生成开发信</button>
       <button class="ghost" id="draftCopy">复制全文</button>
       <button class="ghost" id="draftGmail">用 Gmail 发送</button>
+      <button class="ghost" id="draftWhatsApp" style="background:#25D366;color:#fff;border-color:#25D366">WhatsApp 发送</button>
       <button class="ghost" id="draftResend" style="background:#00a76f;color:#fff;border-color:#00a76f">云端发送</button>
       <button class="ghost" id="draftClose">关闭</button>
     </div>
@@ -414,7 +417,7 @@ function contactCell(r) {
   const emails = (r.emails && r.emails.length) ? r.emails : (r.email ? [r.email] : []);
   emails.slice(0, 3).forEach(e => parts.push(`✉️ <a href="mailto:${e}">${e}</a>`));
   if (emails.length > 3) parts.push(`<span style="color:#8a8f99">…等 ${emails.length} 个</span>`);
-  if (r.phone) parts.push(`📞 ${r.phone}`);
+  if (r.phone) parts.push(`📞 ${r.phone} <button class="wa-btn" onclick="waByUrl('${encodeURIComponent(r.url)}')">💬 WhatsApp</button>`);
   if (r.social) parts.push(`🔗 <a href="${r.social}" target="_blank">LinkedIn</a>`);
   if (!parts.length) parts.push('<span style="color:#b0b3b8">点「深挖」抓官网</span>');
   let mxTag = '';
@@ -423,6 +426,39 @@ function contactCell(r) {
     else if (r.mx === false) mxTag = ' <span class="tag" style="background:#fff1e8;color:#d4380d">无MX</span>';
   }
   return parts.join('<br>') + mxTag;
+}
+
+// ========== WhatsApp 一点即聊（wa.me，无需 API key） ==========
+function normalizePhone(p) {
+  if (!p) return '';
+  let s = String(p).replace(/[^\d]/g, '');        // 只留数字
+  if (s.startsWith('00')) s = s.slice(2);          // 去掉国际前缀 00
+  return s;
+}
+function waDefaultText(name) {
+  const cfg = loadDraftCfg() || {};
+  const product = translatedValue('product') || 'our products';
+  const brand = cfg.brand || '';
+  const sender = cfg.sender || '';
+  const intro = (sender ? 'this is ' + sender : 'this is ...') + (brand ? ' from ' + brand : '');
+  return 'Hi ' + (name || 'there') + ', ' + intro + '. We specialize in ' + product + '. Would you be interested in custom ' + product + ' for your business?';
+}
+function openWhatsApp(phone, name, text) {
+  const norm = normalizePhone(phone);
+  if (!norm) { alert('该客户没有可用手机号，无法发送 WhatsApp（可改用邮箱开发信）。'); return; }
+  const msg = text || waDefaultText(name);
+  window.open('https://api.whatsapp.com/send?phone=' + norm + '&text=' + encodeURIComponent(msg), '_blank');
+}
+// 开发页：按 url 取最近搜索结果里的客户，再打开 WhatsApp
+function waByUrl(encUrl) {
+  const url = decodeURIComponent(encUrl);
+  const r = (lastData && lastData.results.find(x => x.url === url)) || allRows.find(x => x.url === url);
+  if (r) openWhatsApp(r.phone, r.name);
+}
+// 管理页：按 id 取客户，再打开 WhatsApp
+function waMgr(id) {
+  const m = managedLeads.find(x => x.id === id);
+  if (m) openWhatsApp(m.phone, m.name);
 }
 
 function render(rows) {
@@ -676,7 +712,7 @@ function renderMgr() {
     const contact = [];
     emails.slice(0, 2).forEach(e => contact.push(`✉️ <a href="mailto:${e}">${e}</a>`));
     if (emails.length > 2) contact.push(`<span style="color:#8a8f99">…等 ${emails.length} 个</span>`);
-    if (m.phone) contact.push(`📞 ${m.phone}`);
+    if (m.phone) contact.push(`📞 ${m.phone} <button class="wa-btn" onclick="waMgr(${m.id})">💬 WhatsApp</button>`);
     if (m.social) contact.push(`🔗 <a href="${escHtml(m.social)}" target="_blank">LinkedIn</a>`);
     if (!contact.length) contact.push('<span style="color:#b0b3b8">无</span>');
     const draftTag = m.draft_subject
@@ -964,6 +1000,16 @@ document.getElementById('draftGmail').addEventListener('click', () => {
   const su = encodeURIComponent(document.getElementById('draftSubject').value);
   const body = encodeURIComponent(document.getElementById('draftBody').value);
   window.open('https://mail.google.com/mail/?view=cm&to=' + encodeURIComponent(emails.join(',')) + '&su=' + su + '&body=' + body, '_blank');
+});
+
+// WhatsApp 发送：把当前开发信正文作为预填消息打开 wa.me
+document.getElementById('draftWhatsApp').addEventListener('click', () => {
+  if (!draftRow) return;
+  const norm = normalizePhone(draftRow.phone);
+  if (!norm) { document.getElementById('draftHint').textContent = '该客户没有手机号，无法用 WhatsApp 发送（可改用邮箱开发信）。'; return; }
+  const body = document.getElementById('draftBody').value;
+  openWhatsApp(draftRow.phone, draftRow.name, body);
+  document.getElementById('draftHint').textContent = '已打开 WhatsApp，编辑后发送即可。';
 });
 
 // 云端发送：通过 Cloudflare Pages Function + Resend 发邮件（无需本机 Gmail）
