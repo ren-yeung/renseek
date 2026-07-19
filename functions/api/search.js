@@ -313,6 +313,61 @@ function overpassItemToResult(el, target) {
   };
 }
 
+// ---------- SearXNG 元搜索（自建，通过 Clash 代理访问 Google 等）----------
+// 价值：一个接口聚合 Google / Bing / DuckDuckGo 等引擎，无需各自申请 API Key，
+// 替代已弃用的 Google CSE「搜索整个网络」功能。
+const SEARXNG_URL_DEFAULT = 'http://159.75.77.238:8888';
+const SEARXNG_LANG_MAP = {
+  English: 'en', Spanish: 'es', French: 'fr', German: 'de',
+  Russian: 'ru', Portuguese: 'pt', Italian: 'it', Japanese: 'ja'
+};
+
+async function searxngSearch(q, baseUrl, n, target) {
+  try {
+    const u = new URL(baseUrl.replace(/\/+$/, '') + '/search');
+    u.searchParams.set('q', q);
+    u.searchParams.set('format', 'json');
+    u.searchParams.set('categories', 'general');
+    u.searchParams.set('language', SEARXNG_LANG_MAP[target] || 'en');
+    u.searchParams.set('pageno', '1');
+    const resp = await fetch(u.toString(), {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!resp.ok) return [];
+    const j = await resp.json();
+    return (j.results || []).slice(0, n);
+  } catch {
+    return [];
+  }
+}
+
+function searxngItemToResult(it, target) {
+  const c = extractContacts((it.title || '') + ' ' + (it.content || ''));
+  const cls = classify({
+    name: it.title || '',
+    url: it.url || '',
+    snippet: it.content || '',
+    siteName: domainOf(it.url || ''),
+    target
+  });
+  return {
+    name: it.title || '',
+    url: it.url || '',
+    site: domainOf(it.url || ''),
+    domain: domainOf(it.url || ''),
+    snippet: (it.content || '').slice(0, 300),
+    email: c.emails[0] || '',
+    emails: c.emails,
+    phone: c.phones[0] || '',
+    social: c.social,
+    type: cls.type,
+    score: cls.score,
+    note: cls.note,
+    source: 'searxng'
+  };
+}
+
 // ---------- 去重 key ----------
 function dedupKey(r) {
   if (r.source === 'google_maps' && r.domain === 'google.com') {
@@ -329,7 +384,7 @@ export async function onRequest(context) {
   const exclude = (url.searchParams.get('exclude') || '').trim();
   const target = (url.searchParams.get('target') || 'English').trim();
   const n = Math.min(parseInt(url.searchParams.get('n') || '10', 10) || 10, 30);
-  const source = (url.searchParams.get('source') || 'bocha').trim(); // bocha / google_maps / google_cse / all
+  const source = (url.searchParams.get('source') || 'bocha').trim(); // bocha / google_maps / google_cse / searxng / all
 
   // 可选参数：自定义搜索词列表（来自扩词助手），替换默认的 bochaQueries/mapsQueries
   let queries = [];
@@ -372,6 +427,8 @@ export async function onRequest(context) {
   const wantBocha = source === 'bocha' || source === 'all';
   const wantMaps = source === 'google_maps' || source === 'all';
   const wantCse = source === 'google_cse' || source === 'all';
+  const wantSearxng = source === 'searxng' || source === 'all';
+  const searxngUrl = (env.SEARXNG_URL || SEARXNG_URL_DEFAULT).replace(/\/+$/, '');
   if (wantBocha && !env.BOCHA_KEY) {
     return new Response(
       JSON.stringify({ error: '缺少 BOCHA_KEY 环境变量（请在 Cloudflare Pages 控制台设置，并重新部署）' }),
@@ -421,18 +478,22 @@ export async function onRequest(context) {
     if (wantMaps) tasks.push(...mapsQueries.map(q => googleMapsSearch(q, env.SERPAPI_KEY, n, gl)));
     if (wantOverpass) tasks.push(overpassSearch(product, bbox, n));
     if (wantCse) tasks.push(...bochaQueries.map(q => googleCseSearch(q, env.GOOGLE_CSE_KEY, env.GOOGLE_CSE_CX, n)));
+    if (wantSearxng) tasks.push(...bochaQueries.map(q => searxngSearch(q, searxngUrl, n, target)));
     const fetchedLists = await Promise.all(tasks);
 
     const bochaLen = wantBocha ? bochaQueries.length : 0;
     const mapsLen = wantMaps ? mapsQueries.length : 0;
     const overLen = wantOverpass ? 1 : 0;
+    const cseLen = wantCse ? bochaQueries.length : 0;
+    const searxngLen = wantSearxng ? bochaQueries.length : 0;
     const merged = [];
     const seen = new Set();
     let cseError = null;
     fetchedLists.forEach((list, idx) => {
       const isMaps = wantMaps && idx >= bochaLen && idx < bochaLen + mapsLen;
       const isOver = wantOverpass && idx >= bochaLen + mapsLen && idx < bochaLen + mapsLen + overLen;
-      const isCse = wantCse && idx >= bochaLen + mapsLen + overLen;
+      const isCse = wantCse && idx >= bochaLen + mapsLen + overLen && idx < bochaLen + mapsLen + overLen + cseLen;
+      const isSearxng = wantSearxng && idx >= bochaLen + mapsLen + overLen + cseLen;
       if (!Array.isArray(list)) {
         if (isCse && list && list.error) {
           cseError = list.error;
@@ -444,6 +505,7 @@ export async function onRequest(context) {
         if (isMaps) r = mapsItemToResult(it, target);
         else if (isOver) r = overpassItemToResult(it, target);
         else if (isCse) r = googleCseItemToResult(it, target);
+        else if (isSearxng) r = searxngItemToResult(it, target);
         else r = bochaItemToResult(it, target);
         if (!r) return;
         const key = dedupKey(r);
@@ -466,7 +528,7 @@ export async function onRequest(context) {
 
     const order = { A: 0, B: 1, C: 2, D: 3 };
     merged.sort((a, b) => (order[a.score] || 9) - (order[b.score] || 9));
-    const resp = { version: 'buyerkw-multi+osm', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).concat(wantOverpass ? ['[Overpass OSM ' + country + ']'] : []).join(' | '), count: merged.length, results: merged };
+    const resp = { version: 'buyerkw-multi+osm+searxng', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).concat(wantOverpass ? ['[Overpass OSM ' + country + ']'] : []).concat(wantSearxng ? ['[SearXNG]'] : []).join(' | '), count: merged.length, results: merged };
     if (cseError) {
       resp.cseError = cseError;
       resp.cseErrorNote = 'Google CSE 返回了错误，请检查控制台设置。常见原因：CSE 未启用"搜索整个网络"或 API 密钥未开通 Custom Search API。';
