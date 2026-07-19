@@ -245,6 +245,13 @@
   <div id="mgrView" class="view" style="display:none">
     <div class="row">
       <input id="mgrSearch" placeholder="搜索公司 / 网址 / 邮箱…" style="flex:1;max-width:340px;padding:9px 11px;border:1px solid #d0d3d9;border-radius:7px;font-size:14px" />
+      <select id="mgrStatusFilter" style="margin-left:8px;padding:9px 11px;border:1px solid #d0d3d9;border-radius:7px;font-size:14px">
+        <option value="">全部状态</option>
+        <option>待联系</option>
+        <option>已联系</option>
+        <option>已回复</option>
+        <option>已成交</option>
+      </select>
       <button id="mgrRefresh">刷新</button>
       <button id="mgrExport" class="ghost">导出 CSV</button>
       <span class="meta" id="mgrMeta"></span>
@@ -733,13 +740,15 @@ async function loadLeads() {
 
 function renderMgr() {
   const box = document.getElementById('mgrList');
-  if (!managedLeads.length) {
-    box.innerHTML = '<div class="empty">客户管理库为空。去「客户开发」搜索并点「导入客户」即可沉淀到这里跟进。</div>';
+  const statusFilter = document.getElementById('mgrStatusFilter').value;
+  const filtered = statusFilter ? managedLeads.filter(m => m.status === statusFilter) : managedLeads;
+  if (!filtered.length) {
+    box.innerHTML = '<div class="empty">' + (statusFilter ? `没有状态为「${statusFilter}」的客户。` : '客户管理库为空。去「客户开发」搜索并点「导入客户」即可沉淀到这里跟进。') + '</div>';
     return;
   }
-  const allChecked = managedLeads.length > 0 && managedLeads.every(m => mgrChecked.has(m.id));
+  const allChecked = filtered.length > 0 && filtered.every(m => mgrChecked.has(m.id));
   let html = '<div class="table-wrap"><table><colgroup><col style="width:3%"><col style="width:20%"><col style="width:6%"><col style="width:10%"><col style="width:24%"><col style="width:10%"><col style="width:12%"><col style="width:6%"><col style="width:9%"></colgroup><thead><tr><th class="chk-th"><input type="checkbox" class="row-check" id="mgrCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>评分</th><th>类型</th><th>联系方式</th><th>状态</th><th>备注</th><th>开发信</th><th>操作</th></tr></thead><tbody>';
-  managedLeads.forEach(m => {
+  filtered.forEach(m => {
     const emails = (m.emails && m.emails.length) ? m.emails : (m.email ? [m.email] : []);
     const contact = [];
     emails.forEach(e => contact.push(`✉️ <a href="mailto:${e}">${e}</a>${verifyBadge(m, e)}`));
@@ -769,6 +778,13 @@ function renderMgr() {
   });
   html += '</tbody></table></div>';
   box.innerHTML = html;
+  const q = document.getElementById('mgrSearch').value.trim();
+  const meta = document.getElementById('mgrMeta');
+  let metaText = `共 ${managedLeads.length} 个客户`;
+  if (q) metaText += ` · 筛选「${q}」`;
+  if (statusFilter) metaText += ` · 状态：${statusFilter}（当前显示 ${filtered.length} 个）`;
+  else if (filtered.length !== managedLeads.length) metaText += ` · 当前显示 ${filtered.length} 个`;
+  meta.textContent = metaText;
   const allBox = document.getElementById('mgrCheckAll');
   if (allBox) allBox.addEventListener('change', toggleMgrCheckAll);
   document.querySelectorAll('#mgrList tbody .row-check').forEach(cb => cb.addEventListener('change', () => {
@@ -917,6 +933,7 @@ document.getElementById('editMask').addEventListener('click', (e) => { if (e.tar
 let mgrTimer = null;
 document.getElementById('mgrSearch').addEventListener('input', () => { clearTimeout(mgrTimer); mgrTimer = setTimeout(loadLeads, 300); });
 document.getElementById('mgrRefresh').addEventListener('click', loadLeads);
+document.getElementById('mgrStatusFilter').addEventListener('change', renderMgr);
 document.getElementById('mgrExport').addEventListener('click', () => {
   if (!managedLeads.length) { alert('客户库为空'); return; }
   const head = ['ID', '公司名', '网址', '类型', '评分', '邮箱', '电话', '社媒', '可收信', '跟进状态', '备注', '保存日期', '开发信主题', '开发信正文'];
