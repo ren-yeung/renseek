@@ -331,13 +331,16 @@ async function searxngSearch(q, baseUrl, n, target) {
     u.searchParams.set('language', SEARXNG_LANG_MAP[target] || 'en');
     u.searchParams.set('pageno', '1');
     const resp = await fetch(u.toString(), {
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(20000)
+      headers: { 'Accept': 'application/json' }
     });
-    if (!resp.ok) return [];
+    if (!resp.ok) {
+      console.error('SearXNG HTTP ' + resp.status);
+      return [];
+    }
     const j = await resp.json();
     return (j.results || []).slice(0, n);
-  } catch {
+  } catch (e) {
+    console.error('SearXNG fetch error: ' + String(e));
     return [];
   }
 }
