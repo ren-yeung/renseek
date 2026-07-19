@@ -146,11 +146,11 @@
       <div class="grid">
         <div>
           <label>你的品牌名</label>
-          <input id="cfgBrand" placeholder="如 PinCraft Gifts" />
+          <input id="cfgBrand" value="RENSEEK" placeholder="如 PinCraft Gifts" />
         </div>
         <div>
           <label>发件人姓名</label>
-          <input id="cfgSender" placeholder="如 John / 杨昌任" />
+          <input id="cfgSender" value="ren-yeung" placeholder="如 John / 杨昌任" />
         </div>
         <div style="grid-column:1/-1">
           <label>卖点（MOQ / 交期 / 定制能力 / 价格等，越具体越好）</label>
@@ -872,6 +872,7 @@ function escHtml(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt
 
 // ========== AI 开发信（DeepSeek 生成 + 发送）==========
 const DRAFT_CFG_KEY = 'renseek_draft_cfg';
+const DRAFT_DEFAULTS = { brand: 'RENSEEK', sender: 'ren-yeung', selling: '' };
 let draftRow = null;
 
 function loadDraftCfg() {
@@ -889,7 +890,7 @@ function saveDraftCfg() {
   const el = document.getElementById(id);
   const cfg = loadDraftCfg();
   const key = id.replace('cfg', '').toLowerCase();
-  if (key in cfg) el.value = cfg[key];
+  el.value = (key in cfg) ? cfg[key] : (DRAFT_DEFAULTS[key] || '');
   el.addEventListener('change', saveDraftCfg);
 });
 
@@ -923,7 +924,7 @@ async function genOneDraft(r) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       company: r.name || '', website: r.url, product: translatedValue('product'),
-      sellingPoints: cfg.selling || '', brand: cfg.brand || '', senderName: cfg.sender || '',
+      sellingPoints: cfg.selling || DRAFT_DEFAULTS.selling, brand: cfg.brand || DRAFT_DEFAULTS.brand, senderName: cfg.sender || DRAFT_DEFAULTS.sender,
       senderEmail: '', type: r.type || '', snippet: r.snippet || ''
     })
   });
