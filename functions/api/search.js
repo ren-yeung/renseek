@@ -48,6 +48,20 @@ function extractContacts(text) {
   };
 }
 
+// 多语言买家信号词（用于 classify 评分）。
+// 英文基础词始终生效（跨境站点常混用英文品牌词 / LinkedIn / Inc 等），再叠加目标语言本地词，
+// 避免非英文搜索结果（如日语标题）因无英文买家词被误判为 B。
+const BUYER_KW_BY_LANG = {
+  English: ['distributor', 'promotional products', 'promotional', 'wholesale', 'gift', 'souvenir', 'event', 'agency', 'inc', 'llc', 'corp', 'company', 'based in', 'we supply', 'request a quote', 'get a quote', 'linkedin.com/company', 'reseller', 'dealer'],
+  Spanish: ['distribuidor', 'productos promocionales', 'promocional', 'mayorista', 'venta al por mayor', 'regalo', 'souvenir', 'evento', 'agencia', 's.l.', 's.a.', 'empresa', 'solicitar cotización', 'solicitar presupuesto', 'revendedor', 'concesionario'],
+  French: ['distributeur', 'produits promotionnels', 'promotionnel', 'grossiste', 'vente en gros', 'cadeau', 'souvenir', 'événement', 'agence', 's.a.r.l.', 's.a.s.', 'entreprise', 'demander un devis', 'revendeur', 'concessionnaire'],
+  German: ['distributor', 'großhandel', 'grosshandel', 'werbeartikel', 'geschenk', 'souvenir', 'veranstaltung', 'agentur', 'gmbh', 'ug', 'ag', 'firma', 'anfrage', 'angebot anfordern', 'wiederverkäufer', 'händler'],
+  Russian: ['дистрибьютор', 'оптовая', 'опт', 'рекламная продукция', 'сувенир', 'подарок', 'мероприятие', 'агентство', 'ооо', 'ао', 'компания', 'запросить кп', 'получить кп', 'реализатор', 'дилер'],
+  Portuguese: ['distribuidor', 'atacado', 'produtos promocionais', 'promocional', 'presente', 'souvenir', 'evento', 'agência', 'ltda', 's.a.', 'empresa', 'solicitar orçamento', 'revendedor', 'concessionária'],
+  Italian: ['distributore', 'ingrosso', 'prodotti promozionali', 'promozionale', 'regalo', 'souvenir', 'evento', 'agenzia', 's.r.l.', 's.p.a.', 'azienda', 'richiedi preventivo', 'rivenditore', 'concessionario'],
+  Japanese: ['卸売業者', '卸売', '販促品', 'プロモーション', '販促', 'ギフト', '記念品', 'ノベルティ', '代理店', '会社', '見積もり', '販売', '小売', 'ディーラー', 'リセラー', '株式会社', '有限会社']
+};
+
 function classify(item) {
   // 优先把中国站/中国平台过滤掉
   if (isChinaSite(item))
@@ -56,9 +70,9 @@ function classify(item) {
   const text = ((item.name || '') + ' ' + (item.snippet || '') + ' ' + (item.siteName || '')).toLowerCase();
   const dom = domainOf(item.url || '');
   const sellerKw = ['manufacturer', 'factory', 'hisupplier', 'oem', 'odm', 'supplier from china', 'china factory', 'from china'];
-  const buyerKw = ['distributor', 'promotional products', 'promotional', 'wholesale', 'gift',
-    'souvenir', 'event', 'agency', 'inc', 'llc', 'corp', 'company', 'based in', 'we supply',
-    'request a quote', 'get a quote', 'linkedin.com/company', 'reseller', 'dealer'];
+  const lang = (item.target || 'English').trim();
+  const buyerKw = (BUYER_KW_BY_LANG.English.concat(BUYER_KW_BY_LANG[lang] || []))
+    .map(k => k.toLowerCase());
 
   // 卖家优先：制造商/中国供应链一律标 D 剔除，不被买家词覆盖（避免中国工厂误判为 A）
   const isSeller = sellerKw.some(k => text.includes(k)) || dom.endsWith('.cn');
@@ -86,9 +100,9 @@ async function bochaSearch(q, key, n) {
   }
 }
 
-function bochaItemToResult(it) {
+function bochaItemToResult(it, target) {
   const c = extractContacts((it.name || '') + ' ' + (it.snippet || ''));
-  const cls = classify({ ...it, ...c });
+  const cls = classify({ ...it, ...c, target });
   return {
     name: it.name || '',
     url: it.url || '',
@@ -124,7 +138,7 @@ async function googleMapsSearch(q, key, n, gl) {
   }
 }
 
-function mapsItemToResult(it) {
+function mapsItemToResult(it, target) {
   const name = it.name || it.title || '';
   const website = it.website || '';
   const url = website || ('https://www.google.com/maps/place/?q=place_id:' + encodeURIComponent(it.place_id || name || ''));
@@ -135,7 +149,7 @@ function mapsItemToResult(it) {
     (it.rating ? it.rating + '★' : '') + (it.reviews ? ' (' + it.reviews + ' 评)' : '')
   ].filter(Boolean).join(' · ');
   const c = extractContacts((name || '') + ' ' + snippet + ' ' + website);
-  const cls = classify({ name: name, url, snippet, siteName: '' });
+  const cls = classify({ name: name, url, snippet, siteName: '', target });
   return {
     name: name,
     url,
@@ -244,7 +258,7 @@ export async function onRequest(context) {
     fetchedLists.forEach((list, idx) => {
       const isMaps = wantMaps && idx >= (wantBocha ? bochaQueries.length : 0);
       (list || []).forEach(it => {
-        const r = isMaps ? mapsItemToResult(it) : bochaItemToResult(it);
+        const r = isMaps ? mapsItemToResult(it, target) : bochaItemToResult(it, target);
         const key = dedupKey(r);
         if (!key || seen.has(key)) return;
         seen.add(key);
@@ -255,7 +269,7 @@ export async function onRequest(context) {
     const order = { A: 0, B: 1, C: 2, D: 3 };
     merged.sort((a, b) => (order[a.score] || 9) - (order[b.score] || 9));
     return new Response(
-      JSON.stringify({ version: 'c1f8b8c', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).join(' | '), count: merged.length, results: merged }),
+      JSON.stringify({ version: 'buyerkw-multi', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).join(' | '), count: merged.length, results: merged }),
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   } catch (e) {
     return new Response(
