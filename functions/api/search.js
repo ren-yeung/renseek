@@ -142,9 +142,14 @@ async function googleCseSearch(q, key, cx, n) {
     u.searchParams.set('num', Math.min(n, 10)); // Google CSE 单次最多 10 条
     const resp = await fetch(u.toString());
     const j = await resp.json();
-    if (j.error || !j.items) return [];
+    if (j.error) {
+      console.error('Google CSE API error:', JSON.stringify(j.error));
+      return { error: j.error };
+    }
+    if (!j.items) return [];
     return j.items;
-  } catch {
+  } catch (e) {
+    console.error('Google CSE fetch error:', String(e));
     return [];
   }
 }
@@ -423,11 +428,18 @@ export async function onRequest(context) {
     const overLen = wantOverpass ? 1 : 0;
     const merged = [];
     const seen = new Set();
+    let cseError = null;
     fetchedLists.forEach((list, idx) => {
       const isMaps = wantMaps && idx >= bochaLen && idx < bochaLen + mapsLen;
       const isOver = wantOverpass && idx >= bochaLen + mapsLen && idx < bochaLen + mapsLen + overLen;
       const isCse = wantCse && idx >= bochaLen + mapsLen + overLen;
-      (list || []).forEach(it => {
+      if (!Array.isArray(list)) {
+        if (isCse && list && list.error) {
+          cseError = list.error;
+        }
+        return;
+      }
+      list.forEach(it => {
         let r;
         if (isMaps) r = mapsItemToResult(it, target);
         else if (isOver) r = overpassItemToResult(it, target);
@@ -454,8 +466,13 @@ export async function onRequest(context) {
 
     const order = { A: 0, B: 1, C: 2, D: 3 };
     merged.sort((a, b) => (order[a.score] || 9) - (order[b.score] || 9));
+    const resp = { version: 'buyerkw-multi+osm', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).concat(wantOverpass ? ['[Overpass OSM ' + country + ']'] : []).join(' | '), count: merged.length, results: merged };
+    if (cseError) {
+      resp.cseError = cseError;
+      resp.cseErrorNote = 'Google CSE 返回了错误，请检查控制台设置。常见原因：CSE 未启用"搜索整个网络"或 API 密钥未开通 Custom Search API。';
+    }
     return new Response(
-      JSON.stringify({ version: 'buyerkw-multi+osm', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).concat(wantOverpass ? ['[Overpass OSM ' + country + ']'] : []).join(' | '), count: merged.length, results: merged }),
+      JSON.stringify(resp),
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   } catch (e) {
     return new Response(
