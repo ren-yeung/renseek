@@ -107,12 +107,13 @@ function bochaItemToResult(it) {
 }
 
 // ---------- Google 地图本地商家搜索（SerpAPI google_maps 引擎）----------
-async function googleMapsSearch(q, key, n) {
+async function googleMapsSearch(q, key, n, gl) {
   try {
     const u = new URL('https://serpapi.com/search.json');
     u.searchParams.set('engine', 'google_maps');
     u.searchParams.set('q', q);
     u.searchParams.set('type', 'search');
+    if (gl) u.searchParams.set('gl', gl);
     u.searchParams.set('api_key', key);
     const resp = await fetch(u.toString());
     const j = await resp.json();
@@ -124,18 +125,19 @@ async function googleMapsSearch(q, key, n) {
 }
 
 function mapsItemToResult(it) {
+  const name = it.name || it.title || '';
   const website = it.website || '';
-  const url = website || ('https://www.google.com/maps/place/?q=place_id:' + encodeURIComponent(it.place_id || it.name || ''));
+  const url = website || ('https://www.google.com/maps/place/?q=place_id:' + encodeURIComponent(it.place_id || name || ''));
   const dom = website ? domainOf(website) : 'google.com';
   const snippet = [
     it.address,
     it.types && it.types.length ? it.types.join(', ') : '',
     (it.rating ? it.rating + '★' : '') + (it.reviews ? ' (' + it.reviews + ' 评)' : '')
   ].filter(Boolean).join(' · ');
-  const c = extractContacts((it.name || '') + ' ' + snippet + ' ' + website);
-  const cls = classify({ name: it.name, url, snippet, siteName: '' });
+  const c = extractContacts((name || '') + ' ' + snippet + ' ' + website);
+  const cls = classify({ name: name, url, snippet, siteName: '' });
   return {
-    name: it.name || '',
+    name: name,
     url,
     site: 'Google Maps',
     domain: dom,
@@ -181,6 +183,22 @@ export async function onRequest(context) {
   };
   const t = BUYER_TERMS[target] || BUYER_TERMS.English;
 
+  // 国家 -> Google 地理定位代码（提升 Google 地图召回精度）
+  const GL_MAP = {
+    'united states': 'us', 'usa': 'us', 'us': 'us', 'america': 'us',
+    'germany': 'de', 'german': 'de', 'deutschland': 'de',
+    'united kingdom': 'uk', 'uk': 'uk', 'england': 'uk', 'britain': 'uk',
+    'france': 'fr', 'french': 'fr',
+    'spain': 'es', 'spanish': 'es', 'españa': 'es', 'espana': 'es',
+    'italy': 'it', 'italian': 'it', 'italia': 'it',
+    'japan': 'jp', 'japanese': 'jp',
+    'brazil': 'br', 'portuguese': 'br', 'brasil': 'br',
+    'russia': 'ru', 'russian': 'ru',
+    'australia': 'au', 'canada': 'ca', 'mexico': 'mx',
+    'netherlands': 'nl', 'holland': 'nl'
+  };
+  const gl = GL_MAP[country.toLowerCase()] || '';
+
   // 校验所需 key
   const wantBocha = source === 'bocha' || source === 'all';
   const wantMaps = source === 'google_maps' || source === 'all';
@@ -218,7 +236,7 @@ export async function onRequest(context) {
   try {
     const tasks = [];
     if (wantBocha) tasks.push(...bochaQueries.map(q => bochaSearch(q, env.BOCHA_KEY, n)));
-    if (wantMaps) tasks.push(...mapsQueries.map(q => googleMapsSearch(q, env.SERPAPI_KEY, n)));
+    if (wantMaps) tasks.push(...mapsQueries.map(q => googleMapsSearch(q, env.SERPAPI_KEY, n, gl)));
     const fetchedLists = await Promise.all(tasks);
 
     const merged = [];
