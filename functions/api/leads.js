@@ -85,9 +85,10 @@ async function handlePut(request, db) {
   const now = new Date().toISOString();
   const sets = [];
   const binds = [];
-  const fields = ['name', 'url', 'domain', 'type', 'score', 'email', 'phone', 'social', 'status', 'note', 'draft_subject', 'draft_body'];
+  const fields = ['name', 'url', 'domain', 'type', 'score', 'email', 'phone', 'social', 'status', 'note', 'draft_subject', 'draft_body', 'email_status', 'email_score'];
   fields.forEach(f => { if (f in b) { sets.push(`${f} = ?`); binds.push(b[f]); } });
   if (b.emails) { sets.push('emails = ?'); binds.push(JSON.stringify(b.emails)); }
+  if (b.email_verify !== undefined) { sets.push('email_verify = ?'); binds.push(b.email_verify ? JSON.stringify(b.email_verify) : null); }
   if (b.mx !== undefined) { sets.push('mx = ?'); binds.push(b.mx ? 1 : 0); }
   if (!sets.length) return json({ error: '没有要更新的字段' }, 400);
   sets.push('updated_at = ?'); binds.push(now);
@@ -110,6 +111,8 @@ async function handleDelete(request, db) {
 function normalizeRow(r) {
   let emails = [];
   try { emails = r.emails ? JSON.parse(r.emails) : (r.email ? [r.email] : []); } catch { emails = []; }
+  let emailVerify = null;
+  try { emailVerify = r.email_verify ? JSON.parse(r.email_verify) : null; } catch { emailVerify = null; }
   return {
     id: r.id,
     name: r.name, url: r.url, domain: r.domain, type: r.type, score: r.score,
@@ -117,6 +120,8 @@ function normalizeRow(r) {
     mx: r.mx === null || r.mx === undefined ? null : !!r.mx,
     snippet: r.snippet, status: r.status || '待联系', note: r.note || '',
     draft_subject: r.draft_subject || '', draft_body: r.draft_body || '',
+    email_status: r.email_status || '', email_score: (typeof r.email_score === 'number' ? r.email_score : (r.email_score ? parseInt(r.email_score, 10) : null)),
+    email_verify: emailVerify,
     created_at: r.created_at, updated_at: r.updated_at
   };
 }

@@ -741,8 +741,7 @@ function renderMgr() {
   managedLeads.forEach(m => {
     const emails = (m.emails && m.emails.length) ? m.emails : (m.email ? [m.email] : []);
     const contact = [];
-    emails.slice(0, 2).forEach(e => contact.push(`✉️ <a href="mailto:${e}">${e}</a>`));
-    if (emails.length > 2) contact.push(`<span style="color:#8a8f99">…等 ${emails.length} 个</span>`);
+    emails.forEach(e => contact.push(`✉️ <a href="mailto:${e}">${e}</a>${verifyBadge(m, e)}`));
     if (m.phone) contact.push(`📞 ${m.phone}`);
     if (m.social) contact.push(`🔗 <a href="${escHtml(m.social)}" target="_blank">LinkedIn</a>`);
     if (!contact.length) contact.push('<span style="color:#b0b3b8">无</span>');
@@ -761,6 +760,7 @@ function renderMgr() {
       <td data-label="开发信" style="font-size:12px">${draftTag}</td>
       <td class="ops">
         <button class="mini" onclick="openDraftManaged(${m.id})">开发信</button>
+        <button class="mini ghost" onclick="verifyLead(${m.id})"${m._verifying ? ' disabled style="opacity:.5"' : ''}>${m._verifying ? '验证中…' : '验证邮箱'}</button>
         <button class="mini ghost" onclick="openEdit(${m.id})">编辑</button>
         <button class="mini ghost" style="color:#d4380d;border-color:#d4380d" onclick="mgrDelete(${m.id})">删除</button>
       </td>
@@ -792,6 +792,60 @@ async function mgrSetStatus(id, v) {
 async function mgrSetNote(id, v) {
   await fetch('/api/leads', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, note: v }) });
   const m = managedLeads.find(x => x.id === id); if (m) m.note = v;
+}
+
+// 邮箱质量初筛：调本地 /api/verify（CF DoH 查 MX，不依赖第三方），结果回写 D1
+async function verifyLead(id) {
+  const m = managedLeads.find(x => x.id === id);
+  if (!m) return;
+  const emails = (m.emails && m.emails.length) ? m.emails : (m.email ? [m.email] : []);
+  if (!emails.length) { alert('该客户没有邮箱，无法验证'); return; }
+  m._verifying = true; renderMgr();
+  try {
+    const resp = await fetch('/api/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emails, concurrency: 5 })
+    });
+    const data = await resp.json();
+    const results = data.results || [];
+    const detail = {};
+    let bestScore = -1, bestStatus = 'invalid';
+    results.forEach(r => {
+      detail[r.email] = r;
+      if (typeof r.score === 'number' && r.score > bestScore) { bestScore = r.score; bestStatus = r.status; }
+    });
+    m.email_verify = detail;
+    m.email_status = bestStatus;
+    m.email_score = bestScore >= 0 ? bestScore : 0;
+    await fetch('/api/leads', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, email_status: m.email_status, email_score: m.email_score, email_verify: detail })
+    });
+    if (data.degraded && data.message) console.warn('邮箱初筛降级：', data.message);
+  } catch (e) {
+    alert('验证失败：' + e);
+  } finally {
+    m._verifying = false; renderMgr();
+  }
+}
+
+// 根据单条邮箱的初筛结果渲染徽标
+function verifyBadge(m, email) {
+  if (!m.email_verify || !m.email_verify[email]) return '';
+  const v = m.email_verify[email];
+  const map = {
+    valid:   { t: '✅可收信', c: '#009a29' },
+    role:    { t: '👥角色号', c: '#b06a00' },
+    risky:   { t: '⚠️一次性', c: '#d4380d' },
+    invalid: { t: '✖格式错', c: '#d4380d' },
+    no_mx:   { t: '✖无MX',  c: '#d4380d' },
+    unknown: { t: '?未确定', c: '#8a8f99' }
+  };
+  const x = map[v.status] || { t: v.status, c: '#8a8f99' };
+  const sc = (typeof v.score === 'number') ? ' ' + v.score : '';
+  return ` <span class="tag" style="background:${x.c}1a;color:${x.c}">${x.t}${sc}</span>`;
 }
 async function mgrDelete(id) {
   if (!confirm('确认删除该客户？此操作不可恢复。')) return;
