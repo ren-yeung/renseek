@@ -127,6 +127,14 @@
         <label>每词数量</label>
         <input id="n" type="number" value="10" min="1" max="30" />
       </div>
+      <div>
+        <label>搜索来源</label>
+        <select id="source">
+          <option value="bocha" selected>博查（网页搜索）</option>
+          <option value="google_maps">Google 地图（本地商家）</option>
+          <option value="all">全部（博查 + Google 地图）</option>
+        </select>
+      </div>
       <div class="full">
         <label>实际搜索词（根据右侧翻译结果生成，含两个买家词变体）</label>
         <input id="qpreview" readonly />
@@ -383,7 +391,8 @@ async function doSearch() {
   meta.textContent = '搜索中…'; box.innerHTML = '';
   try {
     const targetLang = document.getElementById('targetLang').value;
-    const url = `/api/search?product=${encodeURIComponent(product)}&country=${encodeURIComponent(country)}&exclude=${encodeURIComponent(exclude)}&target=${encodeURIComponent(targetLang)}&n=${encodeURIComponent(n)}`;
+    const source = document.getElementById('source').value;
+    const url = `/api/search?product=${encodeURIComponent(product)}&country=${encodeURIComponent(country)}&exclude=${encodeURIComponent(exclude)}&target=${encodeURIComponent(targetLang)}&n=${encodeURIComponent(n)}&source=${encodeURIComponent(source)}`;
     const r = await fetch(url);
     const data = await r.json();
     if (data.error) { box.innerHTML = `<div class="err">错误：${escHtml(data.error)}</div>`; meta.textContent=''; return; }

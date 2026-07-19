@@ -1,6 +1,6 @@
 // Cloudflare Pages Function: /api/search
-// 多买家词召回 + 域名去重 + 联系方式提取 + A/B/C/D 评分
-// BOCHA_KEY 通过环境变量注入（Cloudflare Pages 控制台设 secret）
+// 多源聚合（博查网页搜索 + Google 地图本地商家）+ 域名去重 + 联系方式提取 + A/B/C/D 评分
+// BOCHA_KEY / SERPAPI_KEY 通过环境变量注入（Cloudflare Pages 控制台设 secret）
 
 function domainOf(u) {
   try { return new URL(u).hostname.replace(/^www\./, '').toLowerCase(); }
@@ -71,6 +71,7 @@ function classify(item) {
   return { type: '待确认', score: 'B', note: '需人工/LLM 复核' };
 }
 
+// ---------- 博查网页搜索 ----------
 async function bochaSearch(q, key, n) {
   try {
     const resp = await fetch('https://api.bochaai.com/v1/web-search', {
@@ -85,6 +86,79 @@ async function bochaSearch(q, key, n) {
   }
 }
 
+function bochaItemToResult(it) {
+  const c = extractContacts((it.name || '') + ' ' + (it.snippet || ''));
+  const cls = classify({ ...it, ...c });
+  return {
+    name: it.name || '',
+    url: it.url || '',
+    site: it.siteName || '',
+    domain: domainOf(it.url || ''),
+    snippet: (it.snippet || '').slice(0, 300),
+    email: c.emails[0] || '',
+    emails: c.emails,
+    phone: c.phones[0] || '',
+    social: c.social,
+    type: cls.type,
+    score: cls.score,
+    note: cls.note,
+    source: 'bocha'
+  };
+}
+
+// ---------- Google 地图本地商家搜索（SerpAPI google_maps 引擎）----------
+async function googleMapsSearch(q, key, n) {
+  try {
+    const u = new URL('https://serpapi.com/search.json');
+    u.searchParams.set('engine', 'google_maps');
+    u.searchParams.set('q', q);
+    u.searchParams.set('type', 'search');
+    u.searchParams.set('api_key', key);
+    const resp = await fetch(u.toString());
+    const j = await resp.json();
+    if (j.error) return [];
+    return (j.local_results || []).slice(0, n);
+  } catch {
+    return [];
+  }
+}
+
+function mapsItemToResult(it) {
+  const website = it.website || '';
+  const url = website || ('https://www.google.com/maps/place/?q=place_id:' + encodeURIComponent(it.place_id || it.name || ''));
+  const dom = website ? domainOf(website) : 'google.com';
+  const snippet = [
+    it.address,
+    it.types && it.types.length ? it.types.join(', ') : '',
+    (it.rating ? it.rating + '★' : '') + (it.reviews ? ' (' + it.reviews + ' 评)' : '')
+  ].filter(Boolean).join(' · ');
+  const c = extractContacts((it.name || '') + ' ' + snippet + ' ' + website);
+  const cls = classify({ name: it.name, url, snippet, siteName: '' });
+  return {
+    name: it.name || '',
+    url,
+    site: 'Google Maps',
+    domain: dom,
+    snippet: snippet.slice(0, 300),
+    email: c.emails[0] || '',
+    emails: c.emails,
+    phone: it.phone || it.phone_number || c.phones[0] || '',
+    social: c.social,
+    type: cls.type,
+    score: cls.score,
+    note: cls.note,
+    source: 'google_maps'
+  };
+}
+
+// ---------- 去重 key ----------
+function dedupKey(r) {
+  if (r.source === 'google_maps' && r.domain === 'google.com') {
+    return 'maps:' + (r.url.split('place_id:')[1] || r.name);
+  }
+  return r.domain;
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
   const url = new URL(request.url);
@@ -93,6 +167,7 @@ export async function onRequest(context) {
   const exclude = (url.searchParams.get('exclude') || '').trim();
   const target = (url.searchParams.get('target') || 'English').trim();
   const n = Math.min(parseInt(url.searchParams.get('n') || '10', 10) || 10, 30);
+  const source = (url.searchParams.get('source') || 'bocha').trim(); // bocha / google_maps / all
 
   const BUYER_TERMS = {
     English: { dist: 'distributor', promo: 'promotional products', wholesale: 'wholesale', buyBulk: 'buy bulk' },
@@ -106,17 +181,28 @@ export async function onRequest(context) {
   };
   const t = BUYER_TERMS[target] || BUYER_TERMS.English;
 
-  const key = env.BOCHA_KEY;
-  if (!key) {
+  // 校验所需 key
+  const wantBocha = source === 'bocha' || source === 'all';
+  const wantMaps = source === 'google_maps' || source === 'all';
+  if (wantBocha && !env.BOCHA_KEY) {
     return new Response(
       JSON.stringify({ error: '缺少 BOCHA_KEY 环境变量（请在 Cloudflare Pages 控制台设置，并重新部署）' }),
       { status: 500, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   }
+  if (wantMaps && !env.SERPAPI_KEY) {
+    return new Response(
+      JSON.stringify({ error: '缺少 SERPAPI_KEY 环境变量（Google 地图来源需要，请在 Cloudflare Pages 控制台设置后重新部署）' }),
+      { status: 500, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+  }
 
-  // 多个买家导向词变体，提高召回（两次搜索合并去重）
-  let queries = [
+  // 多买家词召回（博查用），Google 地图用更口语的本地检索词
+  const bochaQueries = [
     `${product} ${t.dist} ${country} ${t.promo}`,
     `${product} ${t.wholesale} ${country} ${t.buyBulk}`
+  ];
+  const mapsQueries = [
+    `${product} ${t.wholesale} ${country}`,
+    `${product} ${t.promo} ${country}`
   ];
 
   // 当目标不是中国市场时，自动追加中国平台/供应链排除词，让博查尽量少召回中国站
@@ -126,40 +212,32 @@ export async function onRequest(context) {
   const allExcludes = [...new Set([...autoExclude, ...userExclude])];
   if (allExcludes.length) {
     const ex = allExcludes.join(' -');
-    queries = queries.map(q => q + ' -' + ex);
+    bochaQueries.forEach((q, i) => bochaQueries[i] = q + ' -' + ex);
   }
 
   try {
-    const fetched = await Promise.all(queries.map(q => bochaSearch(q, key, n)));
+    const tasks = [];
+    if (wantBocha) tasks.push(...bochaQueries.map(q => bochaSearch(q, env.BOCHA_KEY, n)));
+    if (wantMaps) tasks.push(...mapsQueries.map(q => googleMapsSearch(q, env.SERPAPI_KEY, n)));
+    const fetchedLists = await Promise.all(tasks);
+
     const merged = [];
     const seen = new Set();
-    for (const list of fetched) {
-      for (const it of list) {
-        const dom = domainOf(it.url);
-        if (!dom || seen.has(dom)) continue;
-        seen.add(dom);
-        const c = extractContacts((it.name || '') + ' ' + (it.snippet || ''));
-        const cls = classify({ ...it, ...c });
-        merged.push({
-          name: it.name || '',
-          url: it.url || '',
-          site: it.siteName || '',
-          domain: dom,
-          snippet: (it.snippet || '').slice(0, 300),
-          email: c.emails[0] || '',
-          emails: c.emails,
-          phone: c.phones[0] || '',
-          social: c.social,
-          type: cls.type,
-          score: cls.score,
-          note: cls.note
-        });
-      }
-    }
+    fetchedLists.forEach((list, idx) => {
+      const isMaps = wantMaps && idx >= (wantBocha ? bochaQueries.length : 0);
+      (list || []).forEach(it => {
+        const r = isMaps ? mapsItemToResult(it) : bochaItemToResult(it);
+        const key = dedupKey(r);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        merged.push(r);
+      });
+    });
+
     const order = { A: 0, B: 1, C: 2, D: 3 };
     merged.sort((a, b) => (order[a.score] || 9) - (order[b.score] || 9));
     return new Response(
-      JSON.stringify({ query: queries.join(' | '), count: merged.length, results: merged }),
+      JSON.stringify({ query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).join(' | '), count: merged.length, results: merged }),
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   } catch (e) {
     return new Response(
