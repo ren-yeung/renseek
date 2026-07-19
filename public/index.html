@@ -1408,7 +1408,7 @@ document.getElementById('draftResend').addEventListener('click', async () => {
 });
 
 // ========== 扩词助手（产品词扩词）==========
-let suggestQueries = [];    // 当前生成的搜索词列表
+let suggestedQueries = [];    // 当前生成的搜索词列表
 let suggestChecked = new Set();  // 已勾选的搜索词索引
 
 // 同步扩词助手的产品词与主表单
@@ -1449,7 +1449,7 @@ async function suggestQueries() {
     if (data.error) { status.textContent = '扩词失败：' + data.error; return; }
 
     const queries = data.queries || [];
-    suggestQueries = queries;
+    suggestedQueries = queries;
     if (!queries.length) { status.textContent = 'AI 未生成搜索词，请重试'; return; }
 
     // 渲染复选框
@@ -1500,7 +1500,7 @@ function onSuggestCheckChange(e) {
 function updateSuggestUI() {
   const count = document.getElementById('suggestCount');
   const btn = document.getElementById('suggestUseSelected');
-  count.textContent = `已选 ${suggestChecked.size}/${suggestQueries.length} 条`;
+  count.textContent = `已选 ${suggestChecked.size}/${suggestedQueries.length} 条`;
   btn.disabled = suggestChecked.size === 0;
 }
 
@@ -1536,7 +1536,7 @@ document.getElementById('suggestDeselectAll').addEventListener('click', () => {
 });
 
 document.getElementById('suggestUseSelected').addEventListener('click', async () => {
-  const selected = Array.from(suggestChecked).sort((a, b) => a - b).map(i => suggestQueries[i]);
+  const selected = Array.from(suggestChecked).sort((a, b) => a - b).map(i => suggestedQueries[i]);
   if (!selected.length) { alert('请先勾选要使用的搜索词'); return; }
 
   // 先翻译（如果必要）
