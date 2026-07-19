@@ -120,6 +120,43 @@ function bochaItemToResult(it, target) {
   };
 }
 
+// ---------- Google Custom Search（Goggle CSE，网页搜索）----------
+async function googleCseSearch(q, key, cx, n) {
+  try {
+    const u = new URL('https://www.googleapis.com/customsearch/v1');
+    u.searchParams.set('key', key);
+    u.searchParams.set('cx', cx);
+    u.searchParams.set('q', q);
+    u.searchParams.set('num', Math.min(n, 10)); // Google CSE 单次最多 10 条
+    const resp = await fetch(u.toString());
+    const j = await resp.json();
+    if (j.error || !j.items) return [];
+    return j.items;
+  } catch {
+    return [];
+  }
+}
+
+function googleCseItemToResult(it, target) {
+  const c = extractContacts((it.title || '') + ' ' + (it.snippet || ''));
+  const cls = classify({ name: it.title || '', url: it.link || '', snippet: it.snippet || '', siteName: it.displayLink || '', target });
+  return {
+    name: it.title || '',
+    url: it.link || '',
+    site: it.displayLink || '',
+    domain: domainOf(it.link || ''),
+    snippet: (it.snippet || '').slice(0, 300),
+    email: c.emails[0] || '',
+    emails: c.emails,
+    phone: c.phones[0] || '',
+    social: c.social,
+    type: cls.type,
+    score: cls.score,
+    note: cls.note,
+    source: 'google_cse'
+  };
+}
+
 // ---------- Google 地图本地商家搜索（SerpAPI google_maps 引擎）----------
 async function googleMapsSearch(q, key, n, gl) {
   try {
@@ -275,7 +312,7 @@ export async function onRequest(context) {
   const exclude = (url.searchParams.get('exclude') || '').trim();
   const target = (url.searchParams.get('target') || 'English').trim();
   const n = Math.min(parseInt(url.searchParams.get('n') || '10', 10) || 10, 30);
-  const source = (url.searchParams.get('source') || 'bocha').trim(); // bocha / google_maps / all
+  const source = (url.searchParams.get('source') || 'bocha').trim(); // bocha / google_maps / google_cse / all
 
   const BUYER_TERMS = {
     English: { dist: 'distributor', promo: 'promotional products', wholesale: 'wholesale', buyBulk: 'buy bulk' },
@@ -310,6 +347,7 @@ export async function onRequest(context) {
   // 校验所需 key
   const wantBocha = source === 'bocha' || source === 'all';
   const wantMaps = source === 'google_maps' || source === 'all';
+  const wantCse = source === 'google_cse' || source === 'all';
   if (wantBocha && !env.BOCHA_KEY) {
     return new Response(
       JSON.stringify({ error: '缺少 BOCHA_KEY 环境变量（请在 Cloudflare Pages 控制台设置，并重新部署）' }),
@@ -318,6 +356,11 @@ export async function onRequest(context) {
   if (wantMaps && !env.SERPAPI_KEY) {
     return new Response(
       JSON.stringify({ error: '缺少 SERPAPI_KEY 环境变量（Google 地图来源需要，请在 Cloudflare Pages 控制台设置后重新部署）' }),
+      { status: 500, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+  }
+  if (wantCse && (!env.GOOGLE_CSE_KEY || !env.GOOGLE_CSE_CX)) {
+    return new Response(
+      JSON.stringify({ error: '缺少 GOOGLE_CSE_KEY 或 GOOGLE_CSE_CX 环境变量（请在 Cloudflare Pages 控制台设置后重新部署）' }),
       { status: 500, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   }
 
@@ -346,19 +389,23 @@ export async function onRequest(context) {
     if (wantBocha) tasks.push(...bochaQueries.map(q => bochaSearch(q, env.BOCHA_KEY, n)));
     if (wantMaps) tasks.push(...mapsQueries.map(q => googleMapsSearch(q, env.SERPAPI_KEY, n, gl)));
     if (wantOverpass) tasks.push(overpassSearch(product, bbox, n));
+    if (wantCse) tasks.push(...bochaQueries.map(q => googleCseSearch(q, env.GOOGLE_CSE_KEY, env.GOOGLE_CSE_CX, n)));
     const fetchedLists = await Promise.all(tasks);
 
     const bochaLen = wantBocha ? bochaQueries.length : 0;
     const mapsLen = wantMaps ? mapsQueries.length : 0;
+    const overLen = wantOverpass ? 1 : 0;
     const merged = [];
     const seen = new Set();
     fetchedLists.forEach((list, idx) => {
       const isMaps = wantMaps && idx >= bochaLen && idx < bochaLen + mapsLen;
-      const isOver = wantOverpass && idx >= bochaLen + mapsLen;
+      const isOver = wantOverpass && idx >= bochaLen + mapsLen && idx < bochaLen + mapsLen + overLen;
+      const isCse = wantCse && idx >= bochaLen + mapsLen + overLen;
       (list || []).forEach(it => {
         let r;
         if (isMaps) r = mapsItemToResult(it, target);
         else if (isOver) r = overpassItemToResult(it, target);
+        else if (isCse) r = googleCseItemToResult(it, target);
         else r = bochaItemToResult(it, target);
         if (!r) return;
         const key = dedupKey(r);
