@@ -316,7 +316,7 @@ function overpassItemToResult(el, target) {
 // ---------- SearXNG 元搜索（自建，通过 Clash 代理访问 Google 等）----------
 // 价值：一个接口聚合 Google / Bing / DuckDuckGo 等引擎，无需各自申请 API Key，
 // 替代已弃用的 Google CSE「搜索整个网络」功能。
-const SEARXNG_URL_DEFAULT = 'http://159.75.77.238:8888';
+const SEARXNG_URL_DEFAULT = 'https://mineral-puzzle-thanksgiving-universities.trycloudflare.com';
 const SEARXNG_LANG_MAP = {
   English: 'en', Spanish: 'es', French: 'fr', German: 'de',
   Russian: 'ru', Portuguese: 'pt', Italian: 'it', Japanese: 'ja'
