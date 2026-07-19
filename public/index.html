@@ -447,7 +447,21 @@ function openWhatsApp(phone, name, text) {
   const norm = normalizePhone(phone);
   if (!norm) { alert('该客户没有可用手机号，无法发送 WhatsApp（可改用邮箱开发信）。'); return; }
   const msg = text || waDefaultText(name);
-  window.open('https://api.whatsapp.com/send?phone=' + norm + '&text=' + encodeURIComponent(msg), '_blank');
+  const enc = encodeURIComponent(msg);
+  const ua = navigator.userAgent || '';
+  if (/Android/i.test(ua)) {
+    // 优先拉起 WhatsApp Business（包名 com.whatsapp.w4b）
+    window.open('intent://send?phone=' + norm + '&text=' + enc + '#Intent;scheme=whatsapp;package=com.whatsapp.w4b;end', '_blank');
+  } else if (/iPhone|iPad|iPod/i.test(ua)) {
+    // iOS：优先尝试 WhatsApp Business scheme，未安装则回退 wa.me
+    const biz = 'whatsappbiz://send?phone=' + norm + '&text=' + enc;
+    const fb = 'https://api.whatsapp.com/send?phone=' + norm + '&text=' + enc;
+    window.location.href = biz;
+    setTimeout(function () { if (!document.hidden) window.location.href = fb; }, 1800);
+  } else {
+    // 桌面等：wa.me 扫码页（由手机默认 App 决定打开哪个版本）
+    window.open('https://api.whatsapp.com/send?phone=' + norm + '&text=' + enc, '_blank');
+  }
 }
 // 开发页：按 url 取最近搜索结果里的客户，再打开 WhatsApp
 function waByUrl(encUrl) {
