@@ -235,6 +235,7 @@
     <div class="row" style="margin-top:12px">
       <button class="mini" id="batchImport" style="background:#165dff;color:#fff">导入</button>
       <button class="mini" id="batchDeep" style="background:#00a76f;color:#fff;margin-left:8px">深挖</button>
+      <button class="mini" id="devBatchVerify" style="background:#009a29;color:#fff;margin-left:8px">验证邮箱</button>
       <span class="meta" id="filterMeta" style="margin-left:6px"></span>
     </div>
 
@@ -334,6 +335,7 @@ let allRows = [];          // 最近一次搜索的全部结果
 let visibleRows = [];      // 当前评分筛选后的结果
 let importedSet = new Set();   // 已导入到管理库的 url 集合
 let devChecked = new Set();    // 开发页已勾选的客户 url
+let devVerifyCache = {};        // 开发页邮箱初筛结果缓存：email -> {status,score,...}
 let managedLeads = [];         // 客户管理库（D1）列表
 let mgrChecked = new Set();    // 管理页已勾选的客户 id
 let editId = null;
@@ -490,17 +492,37 @@ async function doSearch() {
 function contactCell(r) {
   const parts = [];
   const emails = (r.emails && r.emails.length) ? r.emails : (r.email ? [r.email] : []);
-  emails.slice(0, 3).forEach(e => parts.push(`✉️ <a href="mailto:${e}">${e}</a>`));
+  emails.slice(0, 3).forEach(e => parts.push(`✉️ <a href="mailto:${e}">${e}</a>${devEmailBadge(e)}`));
   if (emails.length > 3) parts.push(`<span style="color:#8a8f99">…等 ${emails.length} 个</span>`);
   if (r.phone) parts.push(`📞 ${r.phone}`);
   if (r.social) parts.push(`🔗 <a href="${r.social}" target="_blank">LinkedIn</a>`);
   if (!parts.length) parts.push('<span style="color:#b0b3b8">点「深挖」抓官网</span>');
   let mxTag = '';
-  if (emails.length) {
+  if (emails.length && !hasDevVerify(emails)) {
     if (r.mx === true) mxTag = ' <span class="tag" style="background:#e8ffea;color:#009a29">✅可收信</span>';
     else if (r.mx === false) mxTag = ' <span class="tag" style="background:#fff1e8;color:#d4380d">无MX</span>';
   }
   return parts.join('<br>') + mxTag;
+}
+
+// 开发页：单个邮箱的初筛徽标（读 devVerifyCache）
+function devEmailBadge(email) {
+  const v = devVerifyCache[email];
+  if (!v) return '';
+  const map = {
+    valid:   { t: '✅可收信', c: '#009a29' },
+    role:    { t: '👥角色号', c: '#b06a00' },
+    risky:   { t: '⚠️一次性', c: '#d4380d' },
+    invalid: { t: '✖格式错', c: '#d4380d' },
+    no_mx:   { t: '✖无MX',  c: '#d4380d' },
+    unknown: { t: '?未确定', c: '#8a8f99' }
+  };
+  const x = map[v.status] || { t: v.status, c: '#8a8f99' };
+  const sc = (typeof v.score === 'number') ? ' ' + v.score : '';
+  return ` <span class="tag" style="background:${x.c}1a;color:${x.c}">${x.t}${sc}</span>`;
+}
+function hasDevVerify(emails) {
+  return emails.some(e => devVerifyCache[e]);
 }
 
 function render(rows) {
@@ -663,7 +685,8 @@ async function importLead(btn, encUrl) {
       body: JSON.stringify({
         name: r.name, url: r.url, domain: r.domain, type: r.type, score: r.score,
         email: r.email, emails: r.emails || (r.email ? [r.email] : []),
-        phone: r.phone, social: r.social, mx: r.mx, snippet: r.snippet
+        phone: r.phone, social: r.social, mx: r.mx, snippet: r.snippet,
+        email_status: r.email_status || '', email_score: (r.email_score !== undefined ? r.email_score : null)
       })
     });
     const d = await resp.json();
@@ -699,7 +722,8 @@ async function batchImport() {
           body: JSON.stringify({
             name: r.name, url: r.url, domain: r.domain, type: r.type, score: r.score,
             email: r.email, emails: r.emails || (r.email ? [r.email] : []),
-            phone: r.phone, social: r.social, mx: r.mx, snippet: r.snippet
+            phone: r.phone, social: r.social, mx: r.mx, snippet: r.snippet,
+            email_status: r.email_status || '', email_score: (r.email_score !== undefined ? r.email_score : null)
           })
         });
         const d = await resp.json();
@@ -719,6 +743,48 @@ async function batchImport() {
   if (skipped) parts.push(`跳过已导入 ${skipped} 条`);
   parts.push(`新导入成功 ${ok}/${total} 条`);
   meta.textContent = parts.join('，');
+}
+
+// ========== 开发页批量验证邮箱 ==========
+async function devBatchVerify() {
+  if (!lastData) return;
+  const targets = visibleRows.filter(r => devChecked.has(r.url));
+  if (!targets.length) { alert('请先勾选要验证的客户'); return; }
+  const allEmails = []; const seen = new Set();
+  targets.forEach(r => {
+    const emails = (r.emails && r.emails.length) ? r.emails : (r.email ? [r.email] : []);
+    emails.forEach(e => { if (!seen.has(e)) { seen.add(e); allEmails.push(e); } });
+  });
+  if (!allEmails.length) { alert('勾选的客户都还没有邮箱，请先「深挖」抓取'); return; }
+  const btn = document.getElementById('devBatchVerify');
+  const meta = document.getElementById('filterMeta');
+  btn.disabled = true; meta.textContent = `验证邮箱中… 0/${allEmails.length}`;
+  try {
+    const resp = await fetch('/api/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emails: allEmails, concurrency: 5 })
+    });
+    const data = await resp.json();
+    const results = data.results || [];
+    results.forEach(r => { devVerifyCache[r.email] = r; });
+    // 回写每条客户的最佳状态/分数，用于后续导入时一并带入 D1
+    targets.forEach(r => {
+      const emails = (r.emails && r.emails.length) ? r.emails : (r.email ? [r.email] : []);
+      let bestScore = -1, bestStatus = 'invalid';
+      emails.forEach(e => {
+        const v = devVerifyCache[e];
+        if (v && typeof v.score === 'number' && v.score > bestScore) { bestScore = v.score; bestStatus = v.status; }
+      });
+      r.email_status = bestStatus;
+      r.email_score = bestScore >= 0 ? bestScore : 0;
+    });
+    applyFilters();
+    meta.textContent = `邮箱验证完成：共 ${allEmails.length} 个邮箱`;
+  } catch (e) {
+    meta.textContent = '邮箱验证失败：' + e;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ========== 客户管理库（D1）==========
@@ -1040,6 +1106,7 @@ document.getElementById('mgrBatchVerify').addEventListener('click', mgrBatchVeri
 // 绑定批量按钮
 document.getElementById('batchImport').addEventListener('click', batchImport);
 document.getElementById('batchDeep').addEventListener('click', batchDeepAB);
+document.getElementById('devBatchVerify').addEventListener('click', devBatchVerify);
 
 // 当前结果导出 CSV
 document.getElementById('export').addEventListener('click', () => {

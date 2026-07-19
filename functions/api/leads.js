@@ -58,22 +58,23 @@ async function handlePost(request, db) {
   if (existing) {
     // 已存在：只更新「开发阶段字段」，保留用户维护的跟进字段（status/note/draft）
     await db.prepare(
-      `UPDATE leads SET name=?, type=?, score=?, email=?, emails=?, phone=?, social=?, mx=?, snippet=?, domain=?, updated_at=? WHERE url=?`
+      `UPDATE leads SET name=?, type=?, score=?, email=?, emails=?, phone=?, social=?, mx=?, snippet=?, domain=?, email_status=?, email_score=?, updated_at=? WHERE url=?`
     ).bind(
       b.name || '', b.type || '', b.score || '', b.email || '', emailsJson,
       b.phone || '', b.social || '', (b.mx === undefined ? null : (b.mx ? 1 : 0)),
-      b.snippet || '', b.domain || '', now, b.url
+      b.snippet || '', b.domain || '', (b.email_status || ''), (b.email_score !== undefined ? b.email_score : null),
+      now, b.url
     ).run();
     return json({ ok: true, id: existing.id, existed: true });
   }
   const { meta } = await db.prepare(
-    `INSERT INTO leads (name,url,domain,type,score,email,emails,phone,social,mx,snippet,status,note,created_at,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    `INSERT INTO leads (name,url,domain,type,score,email,emails,phone,social,mx,snippet,status,note,email_status,email_score,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     b.name || '', b.url, b.domain || '', b.type || '', b.score || '',
     b.email || '', emailsJson, b.phone || '', b.social || '',
     (b.mx === undefined ? null : (b.mx ? 1 : 0)), b.snippet || '',
-    '待联系', '', now, now
+    '待联系', '', (b.email_status || ''), (b.email_score !== undefined ? b.email_score : null), now, now
   ).run();
   return json({ ok: true, id: meta ? meta.last_row_id : null, existed: false });
 }
