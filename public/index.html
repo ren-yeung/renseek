@@ -453,10 +453,11 @@ function openWhatsApp(phone, name, text) {
     // 优先拉起 WhatsApp Business（包名 com.whatsapp.w4b）
     window.open('intent://send?phone=' + norm + '&text=' + enc + '#Intent;scheme=whatsapp;package=com.whatsapp.w4b;end', '_blank');
   } else if (/iPhone|iPad|iPod/i.test(ua)) {
-    // iOS：优先尝试 WhatsApp Business scheme，未安装则回退 wa.me
-    const biz = 'whatsappbiz://send?phone=' + norm + '&text=' + enc;
+    // iOS：WhatsApp 与 Business 共用 whatsapp:// scheme，系统决定打开哪个；
+    // 仅装 Business 时会直接打开 Business。未安装则回退 wa.me。
+    const app = 'whatsapp://send?phone=' + norm + '&text=' + enc;
     const fb = 'https://api.whatsapp.com/send?phone=' + norm + '&text=' + enc;
-    window.location.href = biz;
+    window.location.href = app;
     setTimeout(function () { if (!document.hidden) window.location.href = fb; }, 1800);
   } else {
     // 桌面等：wa.me 扫码页（由手机默认 App 决定打开哪个版本）
