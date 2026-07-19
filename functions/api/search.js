@@ -167,6 +167,98 @@ function mapsItemToResult(it, target) {
   };
 }
 
+// ---------- OpenStreetMap / Overpass（免费，原生带 email/website/phone）----------
+// 价值：地图类结果直接给出邮箱（Google 地图结果常缺邮箱），免 key，补充 renseek「地图源无邮箱」的空白。
+// 仅按国家 bbox 跑，且仅取「带 email 的礼品/纪念品/文具/促销类实体店」——正是徽章/定制礼品的买家。
+const COUNTRY_BBOX = {
+  'united states': [24.3963, 49.3844, -125.0, -66.9346],
+  'usa': [24.3963, 49.3844, -125.0, -66.9346],
+  'us': [24.3963, 49.3844, -125.0, -66.9346],
+  'america': [24.3963, 49.3844, -125.0, -66.9346],
+  'germany': [47.27, 55.05, 5.87, 15.04],
+  'german': [47.27, 55.05, 5.87, 15.04],
+  'deutschland': [47.27, 55.05, 5.87, 15.04],
+  'united kingdom': [49.96, 58.64, -8.16, 1.75],
+  'uk': [49.96, 58.64, -8.16, 1.75],
+  'england': [49.96, 58.64, -8.16, 1.75],
+  'britain': [49.96, 58.64, -8.16, 1.75],
+  'france': [41.33, 51.07, -9.54, 9.56],
+  'french': [41.33, 51.07, -9.54, 9.56],
+  'spain': [35.95, 43.79, -18.45, 4.32],
+  'spanish': [35.95, 43.79, -18.45, 4.32],
+  'españa': [35.95, 43.79, -18.45, 4.32],
+  'espana': [35.95, 43.79, -18.45, 4.32],
+  'italy': [35.49, 47.09, 6.63, 18.48],
+  'italian': [35.49, 47.09, 6.63, 18.48],
+  'italia': [35.49, 47.09, 6.63, 18.48],
+  'japan': [24.25, 45.55, 122.94, 153.99],
+  'japanese': [24.25, 45.55, 122.94, 153.99],
+  'brazil': [-33.75, 5.27, -73.99, -33.74],
+  'portuguese': [-33.75, 5.27, -73.99, -33.74],
+  'brasil': [-33.75, 5.27, -73.99, -33.74],
+  'russia': [41.19, 81.86, 19.64, 179.99],
+  'russian': [41.19, 81.86, 19.64, 179.99],
+  'australia': [-43.63, -10.67, 113.34, 153.61],
+  'canada': [41.67, 83.12, -141.0, -52.62],
+  'mexico': [14.54, 32.72, -118.36, -86.71],
+  'netherlands': [50.75, 53.51, 3.31, 7.22],
+  'holland': [50.75, 53.51, 3.31, 7.22]
+};
+
+// 多个公共镜像轮询，抗单点故障/限流
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter'
+];
+
+async function overpassSearch(product, bbox, n) {
+  const [s, nLat, w, e] = bbox;
+  const shopRe = 'gift|souvenir|stationery|pawnbroker|bookmaker|copyshop|photo|variety_store|trade';
+  const q = `[out:json][timeout:25];
+(
+  node["shop"~"${shopRe}"]["email"]( ${s},${w},${nLat},${e});
+  way["shop"~"${shopRe}"]["email"]( ${s},${w},${nLat},${e});
+);
+out body ${Math.min(n, 40)};`;
+  for (const ep of OVERPASS_ENDPOINTS) {
+    try {
+      const resp = await fetch(ep, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(q)
+      });
+      if (!resp.ok) continue;
+      const j = await resp.json();
+      const els = (j && j.elements) || [];
+      if (els.length) return els;
+    } catch { continue; }
+  }
+  return [];
+}
+
+function overpassItemToResult(el, target) {
+  const tags = el.tags || {};
+  const name = tags.name || '';
+  const website = tags.website || tags['contact:website'] || '';
+  const email = (tags.email || tags['contact:email'] || '').toLowerCase();
+  const phone = tags.phone || tags['contact:phone'] || tags['contact:mobile'] || '';
+  if (!name && !website) return null;
+  const url = website || ('https://www.openstreetmap.org/' + (el.type === 'node' ? 'node/' : 'way/') + el.id);
+  const dom = website ? domainOf(website) : ('osm-' + el.type + '-' + el.id);
+  const snippet = [tags.shop, tags['addr:city'], tags['addr:country']].filter(Boolean).join(' · ');
+  const cls = classify({ name: name, url, snippet, siteName: 'OpenStreetMap', target, emails: email ? [email] : [] });
+  if (cls.score === 'D') return null; // 中国站/工厂剔除
+  return {
+    name, url, site: 'OpenStreetMap', domain: dom, snippet: snippet.slice(0, 300),
+    email: email || '', emails: email ? [email] : [],
+    phone: phone || '', social: '',
+    type: '潜在客户(经销商/定制商)', score: 'A', note: 'OSM 礼品/纪念品类实体店，自带邮箱',
+    source: 'overpass'
+  };
+}
+
 // ---------- 去重 key ----------
 function dedupKey(r) {
   if (r.source === 'google_maps' && r.domain === 'google.com') {
@@ -212,6 +304,8 @@ export async function onRequest(context) {
     'netherlands': 'nl', 'holland': 'nl'
   };
   const gl = GL_MAP[country.toLowerCase()] || '';
+  const bbox = COUNTRY_BBOX[country.toLowerCase()];
+  const wantOverpass = (source === 'google_maps' || source === 'all') && !!bbox;
 
   // 校验所需 key
   const wantBocha = source === 'bocha' || source === 'all';
@@ -251,16 +345,35 @@ export async function onRequest(context) {
     const tasks = [];
     if (wantBocha) tasks.push(...bochaQueries.map(q => bochaSearch(q, env.BOCHA_KEY, n)));
     if (wantMaps) tasks.push(...mapsQueries.map(q => googleMapsSearch(q, env.SERPAPI_KEY, n, gl)));
+    if (wantOverpass) tasks.push(overpassSearch(product, bbox, n));
     const fetchedLists = await Promise.all(tasks);
 
+    const bochaLen = wantBocha ? bochaQueries.length : 0;
+    const mapsLen = wantMaps ? mapsQueries.length : 0;
     const merged = [];
     const seen = new Set();
     fetchedLists.forEach((list, idx) => {
-      const isMaps = wantMaps && idx >= (wantBocha ? bochaQueries.length : 0);
+      const isMaps = wantMaps && idx >= bochaLen && idx < bochaLen + mapsLen;
+      const isOver = wantOverpass && idx >= bochaLen + mapsLen;
       (list || []).forEach(it => {
-        const r = isMaps ? mapsItemToResult(it, target) : bochaItemToResult(it, target);
+        let r;
+        if (isMaps) r = mapsItemToResult(it, target);
+        else if (isOver) r = overpassItemToResult(it, target);
+        else r = bochaItemToResult(it, target);
+        if (!r) return;
         const key = dedupKey(r);
-        if (!key || seen.has(key)) return;
+        if (!key) return;
+        if (seen.has(key)) {
+          // 同域名重复：新结果有联系方式而旧没有则补全（避免 Google 地图有站无邮箱、OSM 有邮箱被丢弃）
+          const prev = merged.find(x => dedupKey(x) === key);
+          if (prev) {
+            if (!prev.email && r.email) prev.email = r.email;
+            if ((!prev.emails || !prev.emails.length) && r.emails && r.emails.length) prev.emails = r.emails;
+            if (!prev.phone && r.phone) prev.phone = r.phone;
+            if (!prev.social && r.social) prev.social = r.social;
+          }
+          return;
+        }
         seen.add(key);
         merged.push(r);
       });
@@ -269,7 +382,7 @@ export async function onRequest(context) {
     const order = { A: 0, B: 1, C: 2, D: 3 };
     merged.sort((a, b) => (order[a.score] || 9) - (order[b.score] || 9));
     return new Response(
-      JSON.stringify({ version: 'buyerkw-multi', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).join(' | '), count: merged.length, results: merged }),
+      JSON.stringify({ version: 'buyerkw-multi+osm', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).concat(wantOverpass ? ['[Overpass OSM ' + country + ']'] : []).join(' | '), count: merged.length, results: merged }),
       { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   } catch (e) {
     return new Response(

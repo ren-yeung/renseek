@@ -19,6 +19,9 @@
   .form select { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; background:#fff; }
   .input-pair { display:flex; gap:10px; }
   .input-pair input { flex:1; }
+  .form-top { display:flex; gap:10px; align-items:flex-end; }
+  .form-top > div { flex:1; }
+  .form-top button { margin-bottom:0; }
   .form .full { grid-column: 1 / -1; }
   .row { display:flex; gap:10px; align-items:center; margin-top:16px; flex-wrap:wrap; }
   button { background:#165dff; color:#fff; border:0; padding:10px 18px; border-radius:7px; font-size:14px; cursor:pointer; }
@@ -71,6 +74,70 @@
   .row-check { width:16px; height:16px; cursor:pointer; }
   #editMask .form { margin:0; }
   #editMask .form input, #editMask .form textarea { margin-bottom:4px; }
+
+  /* ========== 移动端适配（桌面端 >768px 不受影响） ========== */
+  @media (max-width: 768px) {
+    .wrap { padding: 10px; }
+    h1 { font-size: 18px; }
+    .sub { font-size: 12px; margin-bottom: 14px; }
+
+    /* 表单：两列 -> 单列 */
+    .form { grid-template-columns: 1fr; gap: 12px; }
+    .input-pair { flex-direction: column; gap: 8px; }
+    .input-pair input { width: 100%; }
+    .form-top { flex-direction: column; align-items: stretch; }
+    .form-top > div { width: 100%; }
+    .form-top button { width: 100%; }
+
+    /* 按钮行：横向 -> 竖向占满 */
+    .row { flex-direction: column; align-items: stretch; }
+    .row button, .row .ghost, .row .meta { width: 100%; margin-left: 0; }
+
+    /* Tab 等分 */
+    .tabs { gap: 6px; }
+    .tab { flex: 1; text-align: center; padding: 9px 8px; font-size: 13px; }
+
+    /* 开发信设置网格 -> 单列 */
+    details.cfg .grid { grid-template-columns: 1fr; }
+
+    /* 管理页搜索框自适应 */
+    #mgrSearch { max-width: none; }
+
+    /* 表头 -> 移动筛选条：仅保留 全选框 + 筛选下拉，隐藏列标题 */
+    .table-wrap { overflow: visible; }
+    table { display: block; }
+    thead { display: block; }
+    thead tr { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; background: #f7f8fa; border: 1px solid #e5e6eb; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+    thead th { display: none; border: none; padding: 0; font-size: 12px; }
+    thead th.chk-th, thead th.f-th { display: flex; align-items: center; gap: 6px; }
+    thead .score-select, thead .email-select { max-width: 130px; }
+
+    /* 每行 -> 卡片 */
+    tbody { display: block; }
+    tbody tr { display: block; position: relative; background: #fff; border: 1px solid #e5e6eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+    tbody td { display: block; padding: 6px 0; border: none; white-space: normal; overflow: visible; text-overflow: clip; font-size: 13px; }
+    tbody td::before { content: attr(data-label); display: block; color: #8a8f99; font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+    tbody td a, tbody td .url { white-space: normal; word-break: break-all; }
+    tbody td.contact { display: block; }
+    tbody td.contact a { word-break: break-all; }
+    tbody td.co { padding-right: 30px; }
+    tbody td.chk { padding: 0 0 8px 0; }
+    tbody td.chk::before { display: none; }
+    tbody td.ops { display: flex; flex-wrap: wrap; gap: 6px; }
+    tbody td.ops::before { flex-basis: 100%; }
+    .score-select, .email-select { max-width: 130px; }
+  }
+
+  @media (max-width: 480px) {
+    h1 { font-size: 17px; }
+    .tab { font-size: 12px; padding: 8px 6px; }
+    button, .tab, .row button { font-size: 14px; padding: 11px 16px; }
+    button.mini { padding: 8px 14px; font-size: 13px; }
+    .modal { padding: 16px; }
+    .modal .acts { flex-direction: column; }
+    .modal .acts button { width: 100%; }
+    tbody td.ops button { flex: 1 1 auto; }
+  }
 </style>
 </head>
 <body>
@@ -86,7 +153,7 @@
   <!-- ============ 客户开发视图 ============ -->
   <div id="devView" class="view">
     <div class="form">
-      <div class="full" style="display:flex;gap:10px;align-items:flex-end;">
+      <div class="full form-top">
         <div style="flex:1">
           <label>翻译目标语言</label>
           <select id="targetLang">
@@ -448,17 +515,17 @@ function render(rows) {
     const selected = emailFilter === s.value ? ' selected' : '';
     return `<option value="${s.value}"${selected}>${s.label}</option>`;
   }).join('');
-  let html = '<div class="table-wrap"><table><colgroup><col style="width:4%"><col style="width:35%"><col style="width:15%"><col style="width:10%"><col style="width:36%"></colgroup><thead><tr><th><input type="checkbox" class="row-check" id="devCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>类型</th><th>评分<select class="score-select" onchange="setScoreFilter(this.value)">' + scoreOptions + '</select></th><th>联系方式<select class="email-select" onchange="setEmailFilter(this.value)">' + emailOptions + '</select></th></tr></thead><tbody>';
+  let html = '<div class="table-wrap"><table><colgroup><col style="width:4%"><col style="width:35%"><col style="width:15%"><col style="width:10%"><col style="width:36%"></colgroup><thead><tr><th class="chk-th"><input type="checkbox" class="row-check" id="devCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>类型</th><th class="f-th">评分<select class="score-select" onchange="setScoreFilter(this.value)">' + scoreOptions + '</select></th><th class="f-th">联系方式<select class="email-select" onchange="setEmailFilter(this.value)">' + emailOptions + '</select></th></tr></thead><tbody>';
   rows.forEach((r) => {
     const enc = encodeURIComponent(r.url);
     const checked = devChecked.has(r.url) ? ' checked' : '';
     const imported = importedSet.has(r.url);
     html += `<tr>
-      <td><input type="checkbox" class="row-check" data-url="${enc}"${checked}></td>
-      <td><a href="${escHtml(r.url)}" target="_blank">${escHtml(r.name || r.site || r.url)}</a>${imported ? ' <span class="tag" style="background:#e8ffea;color:#009a29">已导入</span>' : ''}<br><span class="url">${escHtml(r.url)}</span></td>
-      <td>${escHtml(r.type || '')}</td>
-      <td><span class="tag ${r.score}">${r.score}</span></td>
-      <td class="contact" id="c_${enc}">${contactCell(r)}</td>
+      <td class="chk"><input type="checkbox" class="row-check" data-url="${enc}"${checked}></td>
+      <td class="co" data-label="公司/网站"><a href="${escHtml(r.url)}" target="_blank">${escHtml(r.name || r.site || r.url)}</a>${imported ? ' <span class="tag" style="background:#e8ffea;color:#009a29">已导入</span>' : ''}<br><span class="url">${escHtml(r.url)}</span></td>
+      <td data-label="类型">${escHtml(r.type || '')}</td>
+      <td data-label="评分"><span class="tag ${r.score}">${r.score}</span></td>
+      <td class="contact" data-label="联系方式" id="c_${enc}">${contactCell(r)}</td>
     </tr>`;
   });
   html += '</tbody></table></div>';
@@ -670,7 +737,7 @@ function renderMgr() {
     return;
   }
   const allChecked = managedLeads.length > 0 && managedLeads.every(m => mgrChecked.has(m.id));
-  let html = '<div class="table-wrap"><table><colgroup><col style="width:3%"><col style="width:20%"><col style="width:6%"><col style="width:10%"><col style="width:24%"><col style="width:10%"><col style="width:12%"><col style="width:6%"><col style="width:9%"></colgroup><thead><tr><th><input type="checkbox" class="row-check" id="mgrCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>评分</th><th>类型</th><th>联系方式</th><th>状态</th><th>备注</th><th>开发信</th><th>操作</th></tr></thead><tbody>';
+  let html = '<div class="table-wrap"><table><colgroup><col style="width:3%"><col style="width:20%"><col style="width:6%"><col style="width:10%"><col style="width:24%"><col style="width:10%"><col style="width:12%"><col style="width:6%"><col style="width:9%"></colgroup><thead><tr><th class="chk-th"><input type="checkbox" class="row-check" id="mgrCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>评分</th><th>类型</th><th>联系方式</th><th>状态</th><th>备注</th><th>开发信</th><th>操作</th></tr></thead><tbody>';
   managedLeads.forEach(m => {
     const emails = (m.emails && m.emails.length) ? m.emails : (m.email ? [m.email] : []);
     const contact = [];
@@ -684,14 +751,14 @@ function renderMgr() {
       : '<span style="color:#b0b3b8">未写</span>';
     const checked = mgrChecked.has(m.id) ? ' checked' : '';
     html += `<tr>
-      <td><input type="checkbox" class="row-check" data-id="${m.id}"${checked}></td>
-      <td><a href="${escHtml(m.url)}" target="_blank">${escHtml(m.name || m.url)}</a><br><span class="url">${escHtml(m.url)}</span></td>
-      <td><span class="tag ${m.score}">${m.score}</span></td>
-      <td>${escHtml(m.type || '')}</td>
-      <td class="contact">${contact.join('<br>')}</td>
-      <td><select onchange="mgrSetStatus(${m.id}, this.value)" style="width:100%;padding:5px 8px;border:1px solid #d0d3d9;border-radius:6px;font-size:12px;box-sizing:border-box">${['待联系','已联系','已回复','已成交'].map(s => `<option ${m.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
-      <td><input class="note" style="width:100%;padding:5px 8px;border:1px solid #d0d3d9;border-radius:6px;font-size:12px;box-sizing:border-box" placeholder="备注…" value="${escAttr(m.note)}" onchange="mgrSetNote(${m.id}, this.value)" /></td>
-      <td style="font-size:12px">${draftTag}</td>
+      <td class="chk"><input type="checkbox" class="row-check" data-id="${m.id}"${checked}></td>
+      <td class="co" data-label="公司/网站"><a href="${escHtml(m.url)}" target="_blank">${escHtml(m.name || m.url)}</a><br><span class="url">${escHtml(m.url)}</span></td>
+      <td data-label="评分"><span class="tag ${m.score}">${m.score}</span></td>
+      <td data-label="类型">${escHtml(m.type || '')}</td>
+      <td class="contact" data-label="联系方式">${contact.join('<br>')}</td>
+      <td data-label="状态"><select onchange="mgrSetStatus(${m.id}, this.value)" style="width:100%;padding:5px 8px;border:1px solid #d0d3d9;border-radius:6px;font-size:12px;box-sizing:border-box">${['待联系','已联系','已回复','已成交'].map(s => `<option ${m.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
+      <td data-label="备注"><input class="note" style="width:100%;padding:5px 8px;border:1px solid #d0d3d9;border-radius:6px;font-size:12px;box-sizing:border-box" placeholder="备注…" value="${escAttr(m.note)}" onchange="mgrSetNote(${m.id}, this.value)" /></td>
+      <td data-label="开发信" style="font-size:12px">${draftTag}</td>
       <td class="ops">
         <button class="mini" onclick="openDraftManaged(${m.id})">开发信</button>
         <button class="mini ghost" onclick="openEdit(${m.id})">编辑</button>
