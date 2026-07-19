@@ -5,18 +5,58 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>外贸徽章客户开发器</title>
 <style>
+  :root {
+    --accent:#2563eb;          /* 靛蓝主色（D 深色高级风） */
+    --accent-600:#1d4ed8;
+    --accent-green:#0e9f6e;    /* 蓝绿强调（C 外贸工作台风） */
+    --accent-green-600:#0b8a5f;
+    --sidebar-bg:#0f172a;
+    --sidebar-text:#cbd5e1;
+    --sidebar-dim:#64748b;
+    --bg:#f1f5f9;
+    --card:#ffffff;
+    --border:#e2e8f0;
+    --text:#0f172a;
+    --muted:#64748b;
+    --radius:10px;
+  }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin:0; background:#f5f6f8; color:#1f2329; }
-  .wrap { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
-  @media (max-width: 1460px) { .wrap { padding: 16px; } }
-  @media (max-width: 768px) { .wrap { padding: 12px; } }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin:0; background:var(--bg); color:var(--text); font-size:14px; }
+  .app { display:flex; min-height:100vh; }
+  .sidebar { width:224px; flex:0 0 224px; background:var(--sidebar-bg); color:var(--sidebar-text); padding:20px 14px; display:flex; flex-direction:column; position:sticky; top:0; height:100vh; }
+  .brand { display:flex; align-items:center; gap:11px; padding:2px 8px 18px; }
+  .brand .logo { width:36px; height:36px; border-radius:10px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:600; flex:0 0 36px; }
+  .brand .name { color:#fff; font-size:15px; font-weight:600; line-height:1.2; }
+  .brand .sub2 { color:var(--sidebar-dim); font-size:11px; }
+  .nav { display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+  .nav-item { display:flex; align-items:center; gap:10px; padding:11px 12px; border:none; background:transparent; color:var(--sidebar-text); cursor:pointer; font-size:14px; border-radius:9px; text-align:left; width:100%; font-family:inherit; }
+  .nav-item:hover { background:rgba(255,255,255,.06); color:#fff; }
+  .nav-item.active { background:var(--accent); color:#fff; }
+  .nav-item .ic { width:18px; text-align:center; }
+  .nav-item .cnt { margin-left:auto; background:rgba(255,255,255,.18); color:#fff; border-radius:10px; font-size:11px; padding:1px 7px; }
+  .nav-item:not(.active) .cnt { background:rgba(255,255,255,.1); color:var(--sidebar-text); }
+  .side-foot { margin-top:auto; color:var(--sidebar-dim); font-size:11px; padding:8px; line-height:1.7; border-top:1px solid rgba(255,255,255,.08); }
+  .content { flex:1; min-width:0; padding:24px 32px; max-width:1280px; }
+  @media (max-width: 1460px) { .content { padding: 20px 24px; } }
+  @media (max-width: 768px) { .app { flex-direction:column; } .sidebar { width:100%; flex:none; height:auto; position:relative; } .nav { flex-direction:row; flex-wrap:wrap; } .nav-item { width:auto; } .content { padding:14px; } }
   h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color:#8a8f99; font-size: 13px; margin-bottom: 18px; }
-  .form { background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:18px; display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+  .sub { color:var(--muted); font-size: 13px; margin-bottom: 18px; }
+
+  /* KPI 卡片（C 外贸工作台） */
+  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }
+  @media (max-width:768px){ .kpi-row { grid-template-columns:repeat(2,1fr); } }
+  .kpi { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; }
+  .kpi .k-label { font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .kpi .k-num { font-size:22px; font-weight:600; }
+  .kpi.green .k-num { color:var(--accent-green); }
+  .kpi.blue .k-num { color:var(--accent); }
+  .kpi.amber .k-num { color:#b45309; }
+
+  .form { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px; display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
   .form label { font-size:12px; color:#4e5969; display:block; margin-bottom:6px; }
-  .form input { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; }
+  .form input { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; font-family:inherit; }
   .form input[readonly] { background:#f7f8fa; color:#4e5969; }
-  .form select { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; background:#fff; }
+  .form select { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; background:#fff; font-family:inherit; }
   .input-pair { display:flex; gap:10px; }
   .input-pair input { flex:1; }
   .form-top { display:flex; gap:10px; align-items:flex-end; }
@@ -24,49 +64,43 @@
   .form-top button { margin-bottom:0; }
   .form .full { grid-column: 1 / -1; }
   .row { display:flex; gap:10px; align-items:center; margin-top:16px; flex-wrap:wrap; }
-  button { background:#165dff; color:#fff; border:0; padding:10px 18px; border-radius:7px; font-size:14px; cursor:pointer; }
-  button.ghost { background:#fff; color:#165dff; border:1px solid #165dff; }
+  button { background:var(--accent); color:#fff; border:0; padding:10px 18px; border-radius:8px; font-size:14px; cursor:pointer; font-family:inherit; }
+  button.ghost { background:#fff; color:var(--accent); border:1px solid var(--accent); }
   button.mini { padding:4px 10px; font-size:12px; border-radius:6px; }
   button:disabled { opacity:.6; cursor:default; }
-  .meta { font-size:12px; color:#8a8f99; margin-left:auto; }
-  .table-wrap { overflow-x: auto; margin-top: 20px; background: #fff; border: 1px solid #e5e6eb; border-radius: 10px; }
+  .meta { font-size:12px; color:var(--muted); margin-left:auto; }
+  .table-wrap { overflow-x: auto; margin-top: 20px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #f0f1f3; font-size:12px; vertical-align:middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   th { background:#f7f8fa; color:#4e5969; font-weight:600; }
-  td a { color:#165dff; text-decoration:none; word-break: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 100%; }
+  td a { color:var(--accent); text-decoration:none; word-break: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 100%; }
   td.contact { white-space: normal; overflow: visible; text-overflow: clip; }
   td.contact a { white-space: normal; word-break: break-all; overflow: visible; }
-  td .url { display: inline-block; color:#8a8f99; font-size:11px; word-break: break-all; white-space: normal; max-width: 100%; }
+  td .url { display: inline-block; color:var(--muted); font-size:11px; word-break: break-all; white-space: normal; max-width: 100%; }
   .tag.A { background:#e8ffea; color:#009a29; }
   .tag.B { background:#fff7e8; color:#d4660a; }
   .tag.C { background:#fff1e8; color:#d4380d; }
   .tag.D { background:#f0f0f0; color:#8a8f99; }
-  .empty { text-align:center; color:#8a8f99; padding:40px; }
+  .empty { text-align:center; color:var(--muted); padding:40px; }
   .err { color:#d4380d; padding:12px; }
   .contact { font-size:12px; color:#4e5969; line-height:1.6; }
-  .contact a { color:#165dff; }
-  .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:50; }
+  .contact a { color:var(--accent); }
+  .modal-mask { position:fixed; inset:0; background:rgba(15,23,42,.5); display:none; align-items:center; justify-content:center; z-index:50; }
   .modal-mask.show { display:flex; }
-  .modal { background:#fff; width:min(720px,94vw); max-height:88vh; overflow:auto; border-radius:12px; padding:20px 24px; }
+  .modal { background:var(--card); width:min(720px,94vw); max-height:88vh; overflow:auto; border-radius:12px; padding:20px 24px; border:1px solid var(--border); }
   .modal h3 { margin:0 0 4px; font-size:16px; }
-  .modal .sub2 { font-size:12px; color:#8a8f99; margin-bottom:10px; }
+  .modal .sub2 { font-size:12px; color:var(--muted); margin-bottom:10px; }
   .modal label { font-size:12px; color:#4e5969; display:block; margin:12px 0 6px; }
-  .modal input, .modal textarea { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; }
+  .modal input, .modal textarea { width:100%; padding:9px 11px; border:1px solid #d0d3d9; border-radius:7px; font-size:14px; font-family:inherit; }
   .modal textarea { min-height:200px; resize:vertical; line-height:1.6; font-family:inherit; }
   .modal .acts { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
-  .modal .hint { font-size:12px; color:#8a8f99; margin-top:10px; line-height:1.6; }
-  details.cfg { background:#fff; border:1px solid #e5e6eb; border-radius:10px; padding:12px 16px; margin-top:14px; }
-  details.cfg summary { cursor:pointer; font-size:13px; color:#165dff; font-weight:600; outline:none; }
+  .modal .hint { font-size:12px; color:var(--muted); margin-top:10px; line-height:1.6; }
+  details.cfg { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; margin-top:14px; }
+  details.cfg summary { cursor:pointer; font-size:13px; color:var(--accent); font-weight:600; outline:none; }
   details.cfg .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
   details.cfg label { font-size:12px; color:#4e5969; display:block; margin-bottom:5px; }
-  details.cfg input, details.cfg textarea { width:100%; padding:8px 10px; border:1px solid #d0d3d9; border-radius:7px; font-size:13px; }
+  details.cfg input, details.cfg textarea { width:100%; padding:8px 10px; border:1px solid #d0d3d9; border-radius:7px; font-size:13px; font-family:inherit; }
   details.cfg textarea { min-height:60px; resize:vertical; }
-  /* Tab 导航 */
-  .tabs { display:flex; gap:8px; margin-bottom:18px; }
-  .tab { background:#fff; color:#4e5969; border:1px solid #d0d3d9; padding:9px 18px; border-radius:8px; font-size:14px; cursor:pointer; }
-  .tab.active { background:#165dff; color:#fff; border-color:#165dff; }
-  .tab .cnt { background:rgba(255,255,255,.28); color:#fff; border-radius:10px; font-size:11px; padding:1px 7px; margin-left:4px; }
-  .tab:not(.active) .cnt { background:#e5e6eb; color:#4e5969; }
   .ops { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
   .ops button { margin:0; }
   .score-select { padding:2px 6px; font-size:12px; border-radius:6px; border:1px solid #d0d3d9; margin-left:6px; }
@@ -75,13 +109,12 @@
   #editMask .form { margin:0; }
   #editMask .form input, #editMask .form textarea { margin-bottom:4px; }
 
-  /* ========== 移动端适配（桌面端 >768px 不受影响） ========== */
+  /* ========== 移动端适配 ========== */
   @media (max-width: 768px) {
-    .wrap { padding: 10px; }
+    .content { padding: 10px; }
     h1 { font-size: 18px; }
     .sub { font-size: 12px; margin-bottom: 14px; }
 
-    /* 表单：两列 -> 单列 */
     .form { grid-template-columns: 1fr; gap: 12px; }
     .input-pair { flex-direction: column; gap: 8px; }
     .input-pair input { width: 100%; }
@@ -89,34 +122,24 @@
     .form-top > div { width: 100%; }
     .form-top button { width: 100%; }
 
-    /* 按钮行：横向 -> 竖向占满 */
     .row { flex-direction: column; align-items: stretch; }
     .row button, .row .ghost, .row .meta { width: 100%; margin-left: 0; }
 
-    /* Tab 等分 */
-    .tabs { gap: 6px; }
-    .tab { flex: 1; text-align: center; padding: 9px 8px; font-size: 13px; }
-
-    /* 开发信设置网格 -> 单列 */
     details.cfg .grid { grid-template-columns: 1fr; }
-
-    /* 管理页搜索框自适应 */
     #mgrSearch { max-width: none; }
 
-    /* 表头 -> 移动筛选条：仅保留 全选框 + 筛选下拉，隐藏列标题 */
     .table-wrap { overflow: visible; }
     table { display: block; }
     thead { display: block; }
-    thead tr { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; background: #f7f8fa; border: 1px solid #e5e6eb; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+    thead tr { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; background: #f7f8fa; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
     thead th { display: none; border: none; padding: 0; font-size: 12px; }
     thead th.chk-th, thead th.f-th { display: flex; align-items: center; gap: 6px; }
     thead .score-select, thead .email-select { max-width: 130px; }
 
-    /* 每行 -> 卡片 */
     tbody { display: block; }
-    tbody tr { display: block; position: relative; background: #fff; border: 1px solid #e5e6eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+    tbody tr { display: block; position: relative; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
     tbody td { display: block; padding: 6px 0; border: none; white-space: normal; overflow: visible; text-overflow: clip; font-size: 13px; }
-    tbody td::before { content: attr(data-label); display: block; color: #8a8f99; font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+    tbody td::before { content: attr(data-label); display: block; color: var(--muted); font-size: 11px; font-weight: 600; margin-bottom: 2px; }
     tbody td a, tbody td .url { white-space: normal; word-break: break-all; }
     tbody td.contact { display: block; }
     tbody td.contact a { word-break: break-all; }
@@ -130,8 +153,8 @@
 
   @media (max-width: 480px) {
     h1 { font-size: 17px; }
-    .tab { font-size: 12px; padding: 8px 6px; }
-    button, .tab, .row button { font-size: 14px; padding: 11px 16px; }
+    .nav-item { font-size: 13px; padding: 9px 10px; }
+    button, .nav-item, .row button { font-size: 14px; padding: 11px 16px; }
     button.mini { padding: 8px 14px; font-size: 13px; }
     .modal { padding: 16px; }
     .modal .acts { flex-direction: column; }
@@ -141,14 +164,24 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">R</div>
+      <div>
+        <div class="name">Renseek</div>
+        <div class="sub2">外贸客户开发器</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" data-tab="dev"><span class="ic">🔍</span> 客户开发</button>
+      <button class="nav-item" data-tab="mgr"><span class="ic">📇</span> 客户管理 <span class="cnt" id="mgrCnt">0</span></button>
+    </nav>
+    <div class="side-foot">博查搜索 · 买家初筛<br>联系方式提取 · 邮箱验证<br>开发 → 导入 → 跟进</div>
+  </aside>
+  <main class="content">
   <h1>外贸徽章客户开发器</h1>
   <div class="sub">博查搜索 + 买家/卖家初筛 + 联系方式提取 · 客户开发 → 导入 → 客户管理跟进</div>
-
-  <div class="tabs">
-    <button class="tab active" data-tab="dev">🔍 客户开发</button>
-    <button class="tab" data-tab="mgr">📇 客户管理 <span class="cnt" id="mgrCnt">0</span></button>
-  </div>
 
   <!-- ============ 客户开发视图 ============ -->
   <div id="devView" class="view">
@@ -233,12 +266,13 @@
     </div>
 
     <div class="row" style="margin-top:12px">
-      <button class="mini" id="batchImport" style="background:#165dff;color:#fff">导入</button>
-      <button class="mini" id="batchDeep" style="background:#00a76f;color:#fff;margin-left:8px">深挖</button>
-      <button class="mini" id="devBatchVerify" style="background:#009a29;color:#fff;margin-left:8px">验证邮箱</button>
+      <button class="mini" id="batchImport" style="background:var(--accent);color:#fff">导入</button>
+      <button class="mini" id="batchDeep" style="background:var(--accent-green);color:#fff;margin-left:8px">深挖</button>
+      <button class="mini" id="devBatchVerify" style="background:var(--accent-green);color:#fff;margin-left:8px">验证邮箱</button>
       <span class="meta" id="filterMeta" style="margin-left:6px"></span>
     </div>
 
+    <div class="kpi-row" id="devKpi" style="display:none"></div>
     <div id="result"></div>
   </div>
 
@@ -258,7 +292,7 @@
       <span class="meta" id="mgrMeta"></span>
     </div>
     <div class="row" style="margin-top:12px">
-      <select id="mgrBatchStatusSelect" class="mini" style="background:#165dff;color:#fff;border:none;padding:8px 24px 8px 12px;border-radius:6px;font-size:13px;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%228%22 viewBox=%220 0 8 8%22%3E%3Cpath fill=%22%23ffffff%22 d=%22M4 5.5L1 2h6z%22/%3E%3C/svg%3E');background-repeat:no-repeat;background-position:right 10px center">
+      <select id="mgrBatchStatusSelect" class="mini" style="background:var(--accent);color:#fff;border:none;padding:8px 24px 8px 12px;border-radius:6px;font-size:13px;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%228%22 height=%228%22 viewBox=%220 0 8 8%22%3E%3Cpath fill=%22%23ffffff%22 d=%22M4 5.5L1 2h6z%22/%3E%3C/svg%3E');background-repeat:no-repeat;background-position:right 10px center">
         <option value="">批量改状态</option>
         <option>待联系</option>
         <option>已联系</option>
@@ -266,11 +300,13 @@
         <option>已成交</option>
       </select>
       <button class="mini ghost" id="mgrBatchDelete" style="color:#d4380d;border-color:#d4380d;margin-left:8px">批量删除</button>
-      <button class="mini" id="mgrBatchVerify" style="background:#009a29;color:#fff;margin-left:8px">批量验证邮箱</button>
+      <button class="mini" id="mgrBatchVerify" style="background:var(--accent-green);color:#fff;margin-left:8px">批量验证邮箱</button>
       <span class="meta" id="mgrBatchMeta"></span>
     </div>
+    <div class="kpi-row" id="mgrKpi"></div>
     <div id="mgrList" style="margin-top:16px"></div>
   </div>
+</main>
 </div>
 
 <!-- ============ 开发信弹窗 ============ -->
@@ -343,8 +379,8 @@ let scoreFilter = 'ALL'; // 当前评分筛选：ALL/A/B/C/D
 let emailFilter = 'ALL'; // 当前联系方式筛选：ALL / HAS_EMAIL / NO_EMAIL / EMPTY
 
 // ========== Tab 切换 ==========
-document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
-  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+document.querySelectorAll('.nav-item').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
   t.classList.add('active');
   const tab = t.dataset.tab;
   document.getElementById('devView').style.display = tab === 'dev' ? '' : 'none';
@@ -599,6 +635,26 @@ function applyFilters() {
   else if (emailFilter === 'EMPTY') rows = rows.filter(r => !hasEmail(r) && !r.phone && !r.social);
   visibleRows = rows;
   render(visibleRows);
+  updateDevKpi();
+}
+
+function updateDevKpi() {
+  const box = document.getElementById('devKpi');
+  const total = allRows.length;
+  if (!total) { box.style.display = 'none'; return; }
+  const aCount = allRows.filter(r => r.score === 'A').length;
+  const importedCount = allRows.filter(r => importedSet.has(r.url)).length;
+  const verifiedCount = allRows.reduce((n, r) => {
+    const emails = (r.emails && r.emails.length) ? r.emails : (r.email ? [r.email] : []);
+    return n + emails.filter(e => devVerifyCache[e]).length;
+  }, 0);
+  box.style.display = 'grid';
+  box.innerHTML = [
+    { c: 'blue', l: '命中客户', n: total },
+    { c: '', l: 'A 类高价值', n: aCount },
+    { c: 'green', l: '已导入', n: importedCount },
+    { c: 'green', l: '邮箱已验证', n: verifiedCount }
+  ].map(k => `<div class="kpi ${k.c}"><div class="k-label">${k.l}</div><div class="k-num">${k.n}</div></div>`).join('');
 }
 
 async function deepContact(encUrl) {
@@ -807,6 +863,20 @@ async function loadLeads() {
   }
 }
 
+function updateMgrKpi() {
+  const box = document.getElementById('mgrKpi');
+  const total = managedLeads.length;
+  const verified = managedLeads.filter(m => m.email_status === 'valid' || m.email_status === 'role').length;
+  const pending = managedLeads.filter(m => m.status === '待联系').length;
+  const done = managedLeads.filter(m => m.status === '已成交' || m.status === '已回复').length;
+  box.innerHTML = [
+    { c: 'blue', l: '客户总数', n: total },
+    { c: 'green', l: '邮箱已验证', n: verified },
+    { c: 'amber', l: '待联系', n: pending },
+    { c: '', l: '已回复/成交', n: done }
+  ].map(k => `<div class="kpi ${k.c}"><div class="k-label">${k.l}</div><div class="k-num">${k.n}</div></div>`).join('');
+}
+
 function renderMgr() {
   const box = document.getElementById('mgrList');
   const statusFilter = document.getElementById('mgrStatusFilter').value;
@@ -860,6 +930,7 @@ function renderMgr() {
     const id = parseInt(cb.dataset.id, 10);
     if (cb.checked) mgrChecked.add(id); else mgrChecked.delete(id);
   }));
+  updateMgrKpi();
 }
 
 function toggleMgrCheckAll(e) {
