@@ -48,6 +48,9 @@ npx wrangler d1 execute renseek --file=init-db.sql --remote
 | status | 跟进状态：待联系 / 已联系 / 已回复 / 已成交 |
 | note | 跟进备注 |
 | draft_subject / draft_body | 已写好的开发信主题与正文 |
+| source | 客户来源渠道（导入时自动记录搜索结果的 source：自建 SearXNG / 博查AI / 谷歌CSE / 谷歌地图 / OSM地图 / 全部） |
+| search_term | 客户类型——搜索词原文（用户搜索时输入的关键词） |
+| search_term_cn | 客户类型——搜索词中文翻译（原文已是中文则不翻译） |
 | created_at / updated_at | 时间戳 |
 
 ## 开发信模板库（templates 表）
@@ -63,7 +66,7 @@ npx wrangler d1 execute renseek --file=init-db.sql --remote
 | company | 公司信息（公司名 / 官网） |
 | whatsapp | WhatsApp 号码 |
 | reply_to / from_addr | 回复邮箱（Reply-To） / 发件邮箱显示名（From） |
-| body_tpl | 可选正文模板，支持占位符 `{{company}}` `{{website}}` `{{product}}` `{{whatsapp}}` `{{sender}}` `{{brand}}` `{{company_info}}`，套用模板时免 AI 直接生成 |
+| body_tpl | 可选正文模板，留作参考（套用模板时仍走 AI 生成正文） |
 | is_default | 1=默认模板（弹窗自动选中） |
 | created_at / updated_at | 时间戳 |
 

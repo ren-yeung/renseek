@@ -430,6 +430,9 @@
       <div><label>网站</label><input id="editUrl" /></div>
       <div><label>域名</label><input id="editDomain" /></div>
       <div><label>类型</label><input id="editType" placeholder="如 潜在客户(经销商/定制商)" /></div>
+      <div><label>来源</label><input id="editSource" placeholder="如 自建SearXNG / 博查AI" /></div>
+      <div><label>搜索词</label><input id="editSearchTerm" placeholder="如 enamel pins wholesale" /></div>
+      <div><label>搜索词(中文)</label><input id="editSearchTermCn" placeholder="如 搪瓷胸针批发" /></div>
       <div><label>评分</label><input id="editScore" placeholder="A/B/C/D" /></div>
       <div><label>邮箱（多个用空格/逗号分隔）</label><input id="editEmail" /></div>
       <div><label>电话</label><input id="editPhone" /></div>
@@ -464,6 +467,32 @@ let mgrChecked = new Set();    // 管理页已勾选的客户 id
 let editId = null;
 let scoreFilter = 'ALL'; // 当前评分筛选：ALL/A/B/C/D
 let emailFilter = 'ALL'; // 当前联系方式筛选：ALL / HAS_EMAIL / NO_EMAIL / EMPTY
+let currentSearchTerm = '';    // 当前搜索词原文（用户输入，可能中文）
+let currentSearchTermCn = '';  // 当前搜索词中文翻译
+
+// 来源渠道中文名映射
+function sourceLabel(src) {
+  const map = {
+    searxng: '自建SearXNG', bocha: '博查AI', google_cse: '谷歌CSE',
+    google_maps: '谷歌地图', overpass: 'OSM地图', all: '全部'
+  };
+  return (src && map[src]) ? map[src] : (src || '');
+}
+
+// 把英文搜索词翻译为中文（已是中文则原样返回）
+async function translateTermToCn(text) {
+  if (!text) return '';
+  if (hasChinese(text)) return text;
+  try {
+    const r = await fetch('/api/translate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product: text, country: '', exclude: '', target: 'Chinese' })
+    });
+    const d = await r.json();
+    if (d.error) return '';
+    return (d.product || '').trim();
+  } catch { return ''; }
+}
 
 // ========== Tab 切换 ==========
 document.querySelectorAll('.nav-item').forEach(t => t.addEventListener('click', () => {
@@ -595,6 +624,12 @@ async function doSearch(queries) {
   const box = document.getElementById('result');
   meta.textContent = '搜索中…'; box.innerHTML = '';
   try {
+    currentSearchTerm = document.getElementById('product').value.trim();
+    if (currentSearchTerm && !hasChinese(currentSearchTerm)) {
+      currentSearchTermCn = await translateTermToCn(currentSearchTerm);
+    } else {
+      currentSearchTermCn = currentSearchTerm;
+    }
     const targetLang = document.getElementById('targetLang').value;
     const source = document.getElementById('source').value;
     let url = `/api/search?product=${encodeURIComponent(product)}&country=${encodeURIComponent(country)}&exclude=${encodeURIComponent(exclude)}&target=${encodeURIComponent(targetLang)}&n=${encodeURIComponent(n)}&source=${encodeURIComponent(source)}`;
@@ -831,7 +866,7 @@ async function importLead(btn, encUrl) {
     const resp = await fetch('/api/leads', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: r.name, url: r.url, domain: r.domain, type: r.type, score: r.score,
+        name: r.name, url: r.url, domain: r.domain, type: r.type, score: r.score, source: r.source || '', search_term: currentSearchTerm, search_term_cn: currentSearchTermCn,
         email: r.email, emails: r.emails || (r.email ? [r.email] : []),
         phone: r.phone, social: r.social, mx: r.mx, snippet: r.snippet,
         email_status: r.email_status || '', email_score: (r.email_score !== undefined ? r.email_score : null)
@@ -868,7 +903,7 @@ async function batchImport() {
         const resp = await fetch('/api/leads', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: r.name, url: r.url, domain: r.domain, type: r.type, score: r.score,
+            name: r.name, url: r.url, domain: r.domain, type: r.type, score: r.score, source: r.source || '', search_term: currentSearchTerm, search_term_cn: currentSearchTermCn,
             email: r.email, emails: r.emails || (r.email ? [r.email] : []),
             phone: r.phone, social: r.social, mx: r.mx, snippet: r.snippet,
             email_status: r.email_status || '', email_score: (r.email_score !== undefined ? r.email_score : null)
@@ -978,7 +1013,7 @@ function renderMgr() {
     return;
   }
   const allChecked = filtered.length > 0 && filtered.every(m => mgrChecked.has(m.id));
-  let html = '<div class="table-wrap"><table><colgroup><col style="width:3%"><col style="width:20%"><col style="width:6%"><col style="width:10%"><col style="width:24%"><col style="width:10%"><col style="width:12%"><col style="width:6%"><col style="width:9%"></colgroup><thead><tr><th class="chk-th"><input type="checkbox" class="row-check" id="mgrCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>评分</th><th>类型</th><th>联系方式</th><th>状态</th><th>备注</th><th>开发信</th><th>操作</th></tr></thead><tbody>';
+  let html = '<div class="table-wrap"><table><colgroup><col style="width:3%"><col style="width:18%"><col style="width:5%"><col style="width:9%"><col style="width:7%"><col style="width:12%"><col style="width:20%"><col style="width:8%"><col style="width:9%"><col style="width:7%"><col style="width:9%"></colgroup><thead><tr><th class="chk-th"><input type="checkbox" class="row-check" id="mgrCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>评分</th><th>类型</th><th>来源</th><th>客户类型(搜索词)</th><th>联系方式</th><th>状态</th><th>备注</th><th>开发信</th><th>操作</th></tr></thead><tbody>';
   filtered.forEach(m => {
     const emails = (m.emails && m.emails.length) ? m.emails : (m.email ? [m.email] : []);
     const contact = [];
@@ -995,6 +1030,8 @@ function renderMgr() {
       <td class="co" data-label="公司/网站"><a href="${escHtml(m.url)}" target="_blank">${escHtml(m.name || m.url)}</a><br><span class="url">${escHtml(m.url)}</span></td>
       <td data-label="评分"><span class="tag ${m.score}">${m.score}</span></td>
       <td data-label="类型">${escHtml(m.type || '')}</td>
+      <td data-label="来源">${escHtml(sourceLabel(m.source) || '-')}</td>
+      <td data-label="客户类型(搜索词)">${(m.search_term || m.search_term_cn) ? (escHtml(m.search_term || '') + (m.search_term_cn ? ' / ' + escHtml(m.search_term_cn) : '')) : '-'}</td>
       <td class="contact" data-label="联系方式">${contact.join('<br>')}</td>
       <td data-label="状态"><select onchange="mgrSetStatus(${m.id}, this.value)" style="width:100%;padding:5px 8px;border:1px solid #d0d3d9;border-radius:6px;font-size:12px;box-sizing:border-box">${['待联系','已联系','已回复','已成交'].map(s => `<option ${m.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
       <td data-label="备注"><input class="note" style="width:100%;padding:5px 8px;border:1px solid #d0d3d9;border-radius:6px;font-size:12px;box-sizing:border-box" placeholder="备注…" value="${escAttr(m.note)}" onchange="mgrSetNote(${m.id}, this.value)" /></td>
@@ -1117,6 +1154,9 @@ function openEdit(id) {
   document.getElementById('editUrl').value = m.url || '';
   document.getElementById('editDomain').value = m.domain || '';
   document.getElementById('editType').value = m.type || '';
+  document.getElementById('editSource').value = m.source || '';
+  document.getElementById('editSearchTerm').value = m.search_term || '';
+  document.getElementById('editSearchTermCn').value = m.search_term_cn || '';
   document.getElementById('editScore').value = m.score || '';
   document.getElementById('editEmail').value = (m.emails && m.emails.length) ? m.emails.join(' ') : (m.email || '');
   document.getElementById('editPhone').value = m.phone || '';
@@ -1135,6 +1175,9 @@ async function editSave() {
     url: document.getElementById('editUrl').value,
     domain: document.getElementById('editDomain').value,
     type: document.getElementById('editType').value,
+    source: document.getElementById('editSource').value,
+    search_term: document.getElementById('editSearchTerm').value,
+    search_term_cn: document.getElementById('editSearchTermCn').value,
     score: document.getElementById('editScore').value,
     email: document.getElementById('editEmail').value.trim(),
     emails,
@@ -1168,12 +1211,12 @@ document.getElementById('mgrRefresh').addEventListener('click', loadLeads);
 document.getElementById('mgrStatusFilter').addEventListener('change', renderMgr);
 document.getElementById('mgrExport').addEventListener('click', () => {
   if (!managedLeads.length) { alert('客户库为空'); return; }
-  const head = ['ID', '公司名', '网址', '类型', '评分', '邮箱', '电话', '社媒', '可收信', '跟进状态', '备注', '保存日期', '开发信主题', '开发信正文'];
+  const head = ['ID', '公司名', '网址', '类型', '来源', '搜索词', '搜索词(中文)', '评分', '邮箱', '电话', '社媒', '可收信', '跟进状态', '备注', '保存日期', '开发信主题', '开发信正文'];
   const lines = [head.join(',')];
   managedLeads.forEach(m => {
     const emailStr = (m.emails && m.emails.length) ? m.emails.join('; ') : (m.email || '');
     const mxStr = m.mx === true ? '是' : (m.mx === false ? '否' : '');
-    const cells = [m.id, m.name, m.url, m.type, m.score, emailStr, m.phone, m.social, mxStr, m.status, m.note, m.created_at, m.draft_subject, (m.draft_body || '').replace(/\r?\n/g, '\\n')].map(esc);
+    const cells = [m.id, m.name, m.url, m.type, m.source, m.search_term, m.search_term_cn, m.score, emailStr, m.phone, m.social, mxStr, m.status, m.note, m.created_at, m.draft_subject, (m.draft_body || '').replace(/\r?\n/g, '\\n')].map(esc);
     lines.push(cells.join(','));
   });
   download('﻿' + lines.join('\r\n'), `客户管理_${new Date().toISOString().slice(0, 10)}.csv`);

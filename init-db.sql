@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS leads (
   social        TEXT,
   mx            INTEGER,      -- 1=可收信, 0=无MX, NULL=未检测
   snippet       TEXT,
+  source        TEXT,         -- 客户来源渠道（自建SearXNG/博查AI/谷歌CSE/谷歌地图/OSM地图/全部）
+  search_term   TEXT,         -- 客户类型：搜索词原文
+  search_term_cn TEXT,        -- 客户类型：搜索词中文翻译
   status        TEXT DEFAULT '待联系',   -- 待联系/已联系/已回复/已成交
   note          TEXT,
   draft_subject TEXT,
@@ -71,6 +74,9 @@ CREATE INDEX IF NOT EXISTS idx_templates_default ON templates(is_default DESC);
 --   social        TEXT,
 --   mx            INTEGER,
 --   snippet       TEXT,
+--   source        TEXT,
+--   search_term   TEXT,
+--   search_term_cn TEXT,
 --   status        TEXT DEFAULT '待联系',
 --   note          TEXT,
 --   draft_subject TEXT,

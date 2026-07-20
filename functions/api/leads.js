@@ -34,9 +34,9 @@ async function handleGet(request, db) {
   const binds = [];
   if (status) { sql += ' AND status = ?'; binds.push(status); }
   if (q) {
-    sql += ' AND (name LIKE ? OR url LIKE ? OR email LIKE ? OR social LIKE ?)';
+    sql += ' AND (name LIKE ? OR url LIKE ? OR email LIKE ? OR social LIKE ? OR search_term LIKE ? OR search_term_cn LIKE ?)';
     const like = '%' + q + '%';
-    binds.push(like, like, like, like);
+    binds.push(like, like, like, like, like, like);
   }
   sql += ' ORDER BY (CASE status WHEN "待联系" THEN 0 WHEN "已联系" THEN 1 WHEN "已回复" THEN 2 WHEN "已成交" THEN 3 ELSE 9 END), created_at DESC';
   const { results } = await db.prepare(sql).bind(...binds).all();
@@ -58,22 +58,24 @@ async function handlePost(request, db) {
   if (existing) {
     // 已存在：只更新「开发阶段字段」，保留用户维护的跟进字段（status/note/draft）
     await db.prepare(
-      `UPDATE leads SET name=?, type=?, score=?, email=?, emails=?, phone=?, social=?, mx=?, snippet=?, domain=?, email_status=?, email_score=?, updated_at=? WHERE url=?`
+      `UPDATE leads SET name=?, type=?, score=?, email=?, emails=?, phone=?, social=?, mx=?, snippet=?, domain=?, email_status=?, email_score=?, source=?, search_term=?, search_term_cn=?, updated_at=? WHERE url=?`
     ).bind(
       b.name || '', b.type || '', b.score || '', b.email || '', emailsJson,
       b.phone || '', b.social || '', (b.mx === undefined ? null : (b.mx ? 1 : 0)),
       b.snippet || '', b.domain || '', (b.email_status || ''), (b.email_score !== undefined ? b.email_score : null),
+      b.source || '', b.search_term || '', b.search_term_cn || '',
       now, b.url
     ).run();
     return json({ ok: true, id: existing.id, existed: true });
   }
   const { meta } = await db.prepare(
-    `INSERT INTO leads (name,url,domain,type,score,email,emails,phone,social,mx,snippet,status,note,email_status,email_score,created_at,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    `INSERT INTO leads (name,url,domain,type,score,email,emails,phone,social,mx,snippet,source,search_term,search_term_cn,status,note,email_status,email_score,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     b.name || '', b.url, b.domain || '', b.type || '', b.score || '',
     b.email || '', emailsJson, b.phone || '', b.social || '',
     (b.mx === undefined ? null : (b.mx ? 1 : 0)), b.snippet || '',
+    b.source || '', b.search_term || '', b.search_term_cn || '',
     '待联系', '', (b.email_status || ''), (b.email_score !== undefined ? b.email_score : null), now, now
   ).run();
   return json({ ok: true, id: meta ? meta.last_row_id : null, existed: false });
@@ -86,7 +88,7 @@ async function handlePut(request, db) {
   const now = new Date().toISOString();
   const sets = [];
   const binds = [];
-  const fields = ['name', 'url', 'domain', 'type', 'score', 'email', 'phone', 'social', 'status', 'note', 'draft_subject', 'draft_body', 'email_status', 'email_score'];
+  const fields = ['name', 'url', 'domain', 'type', 'score', 'email', 'phone', 'social', 'status', 'note', 'draft_subject', 'draft_body', 'email_status', 'email_score', 'source', 'search_term', 'search_term_cn'];
   fields.forEach(f => { if (f in b) { sets.push(`${f} = ?`); binds.push(b[f]); } });
   if (b.emails) { sets.push('emails = ?'); binds.push(JSON.stringify(b.emails)); }
   if (b.email_verify !== undefined) { sets.push('email_verify = ?'); binds.push(b.email_verify ? JSON.stringify(b.email_verify) : null); }
@@ -123,6 +125,7 @@ function normalizeRow(r) {
     draft_subject: r.draft_subject || '', draft_body: r.draft_body || '',
     email_status: r.email_status || '', email_score: (typeof r.email_score === 'number' ? r.email_score : (r.email_score ? parseInt(r.email_score, 10) : null)),
     email_verify: emailVerify,
+    source: r.source || '', search_term: r.search_term || '', search_term_cn: r.search_term_cn || '',
     created_at: r.created_at, updated_at: r.updated_at
   };
 }
