@@ -49,3 +49,22 @@ npx wrangler d1 execute renseek --file=init-db.sql --remote
 | note | 跟进备注 |
 | draft_subject / draft_body | 已写好的开发信主题与正文 |
 | created_at / updated_at | 时间戳 |
+
+## 开发信模板库（templates 表）
+
+「开发信模板」页（侧栏「📝 开发信模板」）用来保存多套发件人资料，生成开发信时可在弹窗内选择套用。表名 `templates`，建表语句见 `init-db.sql`（线上已有库用 `migrate-templates.sql` 追加）。
+
+| 字段 | 含义 |
+|---|---|
+| name | 模板名称（必填） |
+| brand / sender | 品牌名 / 发件人姓名 |
+| product | 产品 |
+| selling | 卖点 / 公司信息（MOQ / 交期 / 定制能力 / 价格等） |
+| company | 公司信息（公司名 / 官网） |
+| whatsapp | WhatsApp 号码 |
+| reply_to / from_addr | 回复邮箱（Reply-To） / 发件邮箱显示名（From） |
+| body_tpl | 可选正文模板，支持占位符 `{{company}}` `{{website}}` `{{product}}` `{{whatsapp}}` `{{sender}}` `{{brand}}` `{{company_info}}`，套用模板时免 AI 直接生成 |
+| is_default | 1=默认模板（弹窗自动选中） |
+| created_at / updated_at | 时间戳 |
+
+接口：`/api/templates`（GET 列表 / POST 新建 / PUT 更新或设默认 / DELETE 删除），结构同 `/api/leads`。

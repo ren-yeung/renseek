@@ -26,17 +26,26 @@ export async function onRequest(context) {
 
   const {
     company = '', website = '', product = '', sellingPoints = '',
-    brand = '', senderName = '', senderEmail = '', type = '', snippet = ''
+    brand = '', senderName = '', senderEmail = '', type = '', snippet = '',
+    whatsapp = '', companyInfo = '', templateName = ''
   } = body;
 
   const base = (env.DEEPSEEK_BASE || 'https://api.deepseek.com/v1').replace(/\/$/, '');
   const model = env.DEEPSEEK_MODEL || 'deepseek-chat';
+
+  const waLine = whatsapp
+    ? `\n- 在正文结尾以单独一行附上 WhatsApp 联系方式（格式如：WhatsApp: ${whatsapp}），方便客户直接加你。`
+    : '';
+  const signOff = (senderName || brand)
+    ? `\n- 信末以发件人署名收尾：用「${senderName || ''}」${brand ? `（${brand}）` : ''} 落款。`
+    : '';
 
   const system = `你是一名资深外贸开发信专家，帮助中国供应商（主营定制徽章/胸针/奖牌等促销礼品）给海外潜在买家写英文开发信。要求：
 - 简洁专业，2-4 段，不超过 160 词
 - 语气自然、不 spammy，突出定制能力、MOQ 灵活、交期稳定、性价比
 - 包含一个明确的行动号召（CTA），邀请客户回复或查看 catalog
 - 不要捏造认证/数据，只用提供的卖点
+- 如果提供了公司信息/发件人信息，自然融入，不要生硬堆砌${waLine}${signOff}
 - 输出严格 JSON：{"subject": "...", "body": "..."}，body 用 \\n 换行，不要使用 markdown 符号`;
 
   const user = `请为以下客户写一封开发信：
@@ -48,6 +57,9 @@ export async function onRequest(context) {
 我们的卖点：${sellingPoints || '（未提供，请写通用优势）'}
 我们品牌：${brand || '（未提供）'}
 发件人：${senderName || '（未提供）'}（${senderEmail || ''}）
+${companyInfo ? `我们公司信息：${companyInfo}` : ''}
+${whatsapp ? `我们 WhatsApp：${whatsapp}` : ''}
+${templateName ? `（本开发信基于模板「${templateName}」生成）` : ''}
 
 要求：用占位符 {{company}} 指代客户公司名（正文中最多出现一次，用于称呼），其余用自然语言。`;
 

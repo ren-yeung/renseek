@@ -186,6 +186,7 @@
     <nav class="nav">
       <button class="nav-item active" data-tab="dev"><span class="ic">🔍</span> 客户开发</button>
       <button class="nav-item" data-tab="mgr"><span class="ic">📇</span> 客户管理 <span class="cnt" id="mgrCnt">0</span></button>
+      <button class="nav-item" data-tab="tpl"><span class="ic">📝</span> 开发信模板</button>
     </nav>
     <div class="side-foot">博查搜索 · 买家初筛<br>联系方式提取 · 邮箱验证<br>开发 → 导入 → 跟进</div>
   </aside>
@@ -352,6 +353,41 @@
     <div class="kpi-row" id="mgrKpi"></div>
     <div id="mgrList" style="margin-top:16px"></div>
   </div>
+
+  <!-- ============ 开发信模板视图 ============ -->
+  <div id="tplView" class="view" style="display:none">
+    <div class="row" style="align-items:flex-start">
+      <div style="flex:1;max-width:560px">
+        <h2 id="tplFormTitle" style="margin:0 0 4px;font-size:18px">新建开发信模板</h2>
+        <div class="sub2" style="margin-bottom:14px">设置发件人资料（产品 / 公司信息 / 姓名 / WhatsApp 等），保存为模板，生成开发信时可直接套用。</div>
+        <div class="form">
+          <div style="grid-column:1/-1"><label>模板名称 *</label><input id="tplName" placeholder="如：徽章批发-英文通用" /></div>
+          <div><label>品牌名</label><input id="tplBrand" placeholder="如 PinCraft Gifts" /></div>
+          <div><label>发件人姓名</label><input id="tplSender" placeholder="如 John / 杨昌任" /></div>
+          <div style="grid-column:1/-1"><label>产品</label><input id="tplProduct" placeholder="如 custom enamel pins / 定制徽章" /></div>
+          <div style="grid-column:1/-1"><label>卖点 / 公司信息（MOQ / 交期 / 定制能力 / 价格等，越具体越好）</label><textarea id="tplSelling" placeholder="如：MOQ 50pcs、7-12 天交货、免费打样、电镀/珐琅多种工艺、支持来图定制"></textarea></div>
+          <div style="grid-column:1/-1"><label>公司信息（公司名 / 官网）</label><input id="tplCompany" placeholder="如 PinCraft Gifts · https://pincraft.example.com" /></div>
+          <div><label>WhatsApp</label><input id="tplWhatsapp" placeholder="如 +86 138 0000 0000" /></div>
+          <div><label>回复邮箱（Reply-To）</label><input id="tplReplyTo" placeholder="如 ycr13120902436@gmail.com" /></div>
+          <div style="grid-column:1/-1"><label>发件邮箱 / 显示名（From，可选）</label><input id="tplFrom" placeholder="如 PinCraft <hello@kuajing.space>" /></div>
+          <div style="grid-column:1/-1"><label>正文模板（可选，支持占位符，套用模板时免 AI 直接生成）</label>
+            <textarea id="tplBody" style="min-height:120px" placeholder="Hi {{company}},&#10;&#10;We are {{brand}}, specialized in {{product}}...&#10;WhatsApp: {{whatsapp}}&#10;&#10;Best,&#10;{{sender}}"></textarea>
+            <div class="hint" style="margin-top:4px">可用占位符：<code>{{company}}</code> 客户名、<code>{{website}}</code> 客户网址、<code>{{product}}</code> 本模板产品、<code>{{whatsapp}}</code> WhatsApp、<code>{{sender}}</code> 发件人、<code>{{brand}}</code> 品牌、<code>{{company_info}}</code> 公司信息</div>
+          </div>
+        </div>
+        <div class="acts" style="margin-top:14px">
+          <button id="tplSave">保存为新模板</button>
+          <button class="ghost" id="tplUpdate" style="display:none">更新当前</button>
+          <button class="ghost" id="tplClear">清空</button>
+        </div>
+      </div>
+
+      <div style="flex:1;max-width:560px">
+        <h2 style="margin:0 0 10px;font-size:18px">已保存模板</h2>
+        <div id="tplList"></div>
+      </div>
+    </div>
+  </div>
 </main>
 </div>
 
@@ -360,6 +396,11 @@
   <div class="modal">
     <h3 id="draftTitle">AI 开发信</h3>
     <div class="sub2" id="draftSub"></div>
+    <label>使用模板</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="draftTpl" style="flex:1;padding:9px 11px;border:1px solid #d0d3d9;border-radius:7px;font-size:14px"></select>
+      <button class="mini" id="draftApplyTpl" style="background:var(--accent-green);color:#fff;white-space:nowrap" title="用模板正文直接生成，不调用 AI">套用模板(免AI)</button>
+    </div>
     <label>主题</label>
     <input id="draftSubject" placeholder="生成后自动填充，可手动修改" />
     <label>发件邮箱（可选，默认 hello@kuajing.space）</label>
@@ -431,7 +472,9 @@ document.querySelectorAll('.nav-item').forEach(t => t.addEventListener('click', 
   const tab = t.dataset.tab;
   document.getElementById('devView').style.display = tab === 'dev' ? '' : 'none';
   document.getElementById('mgrView').style.display = tab === 'mgr' ? '' : 'none';
+  document.getElementById('tplView').style.display = tab === 'tpl' ? '' : 'none';
   if (tab === 'mgr') loadLeads();
+  if (tab === 'tpl') loadTemplates();
 }));
 
 // ========== 搜索（客户开发）==========
@@ -1302,12 +1345,20 @@ document.getElementById('draftMask').addEventListener('click', (e) => { if (e.ta
 
 async function genOneDraft(r) {
   const cfg = loadDraftCfg();
+  const t = currentTpl;
+  const brand = (t && t.brand) ? t.brand : (cfg.brand || DRAFT_DEFAULTS.brand);
+  const sender = (t && t.sender) ? t.sender : (cfg.sender || DRAFT_DEFAULTS.sender);
+  const selling = (t && t.selling) ? t.selling : (cfg.selling || DRAFT_DEFAULTS.selling);
+  const product = (t && t.product) ? t.product : translatedValue('product');
+  const whatsapp = (t && t.whatsapp) || '';
+  const companyInfo = (t && t.company) || '';
   const resp = await fetch('/api/draft', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      company: r.name || '', website: r.url, product: translatedValue('product'),
-      sellingPoints: cfg.selling || DRAFT_DEFAULTS.selling, brand: cfg.brand || DRAFT_DEFAULTS.brand, senderName: cfg.sender || DRAFT_DEFAULTS.sender,
-      senderEmail: '', type: r.type || '', snippet: r.snippet || ''
+      company: r.name || '', website: r.url, product,
+      sellingPoints: selling, brand, senderName: sender, senderEmail: '',
+      type: r.type || '', snippet: r.snippet || '',
+      whatsapp, companyInfo, templateName: (t && t.name) || ''
     })
   });
   const d = await resp.json();
@@ -1407,6 +1458,184 @@ document.getElementById('draftResend').addEventListener('click', async () => {
     btn.disabled = false; btn.textContent = '云端发送';
   }
 });
+
+// ========== 开发信模板（/api/templates，存 D1）==========
+let templates = [];          // 模板列表
+let currentTpl = null;        // 弹窗当前选中模板
+let editingTplId = null;      // 正在编辑的模板 id（null=新建）
+const TPL_LAST_KEY = 'renseek_last_tpl';
+
+async function loadTemplates() {
+  try {
+    const resp = await fetch('/api/templates');
+    const d = await resp.json();
+    templates = d.results || [];
+  } catch { templates = []; }
+  renderTplList(templates);
+  populateDraftTplSelect();
+}
+
+function renderTplList(list) {
+  const box = document.getElementById('tplList');
+  if (!box) return;
+  if (!list.length) { box.innerHTML = '<div class="hint">还没有模板，左侧填写后点「保存为新模板」。</div>'; return; }
+  box.innerHTML = list.map(t => `
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px;background:var(--card)${t.is_default ? ';border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,70,229,.12)' : ''}">
+      <div style="display:flex;align-items:center;gap:8px">
+        <strong style="font-size:15px">${escHtml(t.name)}</strong>
+        ${t.is_default ? '<span style="background:var(--accent);color:#fff;font-size:11px;padding:1px 7px;border-radius:10px">默认</span>' : ''}
+      </div>
+      <div class="hint" style="margin:6px 0">
+        ${[t.brand && ('品牌：' + escHtml(t.brand)), t.sender && ('发件人：' + escHtml(t.sender)), t.product && ('产品：' + escHtml(t.product)), t.whatsapp && ('WhatsApp：' + escHtml(t.whatsapp))].filter(Boolean).join(' · ') || '（未填详细信息）'}
+      </div>
+      ${t.body_tpl ? '<div class="hint" style="color:#009a29">✓ 含正文模板（可免 AI 套用）</div>' : ''}
+      <div class="acts" style="margin-top:10px;gap:8px">
+        <button class="mini" onclick="editTemplate(${t.id})">编辑</button>
+        <button class="mini ghost" onclick="setDefaultTpl(${t.id})"${t.is_default ? ' disabled style="opacity:.5"' : ''}>设为默认</button>
+        <button class="mini ghost" onclick="deleteTemplate(${t.id})" style="color:#d4380d;border-color:#d4380d">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function populateDraftTplSelect() {
+  const sel = document.getElementById('draftTpl');
+  if (!sel) return;
+  const lastId = localStorage.getItem(TPL_LAST_KEY);
+  let selId = '';
+  const def = templates.find(t => t.is_default);
+  if (def) selId = String(def.id);
+  if (lastId && templates.find(t => String(t.id) === lastId)) selId = lastId;
+  let opts = '<option value="">不使用模板</option>';
+  templates.forEach(t => {
+    opts += `<option value="${t.id}"${String(t.id) === selId ? ' selected' : ''}>${escHtml(t.name)}${t.is_default ? ' ★' : ''}</option>`;
+  });
+  sel.innerHTML = opts;
+  sel.value = selId || '';
+  onDraftTplChange();
+}
+
+function onDraftTplChange() {
+  const sel = document.getElementById('draftTpl');
+  const id = sel ? sel.value : '';
+  currentTpl = id ? (templates.find(t => String(t.id) === id) || null) : null;
+  if (id) localStorage.setItem(TPL_LAST_KEY, id); else localStorage.removeItem(TPL_LAST_KEY);
+  const btn = document.getElementById('draftApplyTpl');
+  if (btn) btn.disabled = !(currentTpl && currentTpl.body_tpl && currentTpl.body_tpl.trim());
+  if (currentTpl) {
+    if (currentTpl.from_addr) document.getElementById('draftFrom').value = currentTpl.from_addr;
+    if (currentTpl.reply_to) document.getElementById('draftReplyTo').value = currentTpl.reply_to;
+  }
+}
+
+function tplVal(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+
+async function saveTemplate() {
+  const name = tplVal('tplName').trim();
+  if (!name) { alert('请填写模板名称'); return; }
+  const body = {
+    name,
+    brand: tplVal('tplBrand'), sender: tplVal('tplSender'), product: tplVal('tplProduct'),
+    selling: tplVal('tplSelling'), company: tplVal('tplCompany'), whatsapp: tplVal('tplWhatsapp'),
+    reply_to: tplVal('tplReplyTo'), from_addr: tplVal('tplFrom'), body_tpl: tplVal('tplBody')
+  };
+  const isUpdate = !!editingTplId;
+  if (isUpdate) body.id = editingTplId;
+  const resp = await fetch('/api/templates', {
+    method: isUpdate ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const d = await resp.json();
+  if (d.error) { alert('保存失败：' + d.error); return; }
+  editingTplId = null;
+  clearTplForm();
+  await loadTemplates();
+}
+
+function editTemplate(id) {
+  const t = templates.find(x => String(x.id) === String(id));
+  if (!t) return;
+  editingTplId = t.id;
+  document.getElementById('tplName').value = t.name || '';
+  document.getElementById('tplBrand').value = t.brand || '';
+  document.getElementById('tplSender').value = t.sender || '';
+  document.getElementById('tplProduct').value = t.product || '';
+  document.getElementById('tplSelling').value = t.selling || '';
+  document.getElementById('tplCompany').value = t.company || '';
+  document.getElementById('tplWhatsapp').value = t.whatsapp || '';
+  document.getElementById('tplReplyTo').value = t.reply_to || '';
+  document.getElementById('tplFrom').value = t.from_addr || '';
+  document.getElementById('tplBody').value = t.body_tpl || '';
+  document.getElementById('tplFormTitle').textContent = '编辑模板：' + (t.name || '');
+  document.getElementById('tplSave').style.display = 'none';
+  document.getElementById('tplUpdate').style.display = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function clearTplForm() {
+  editingTplId = null;
+  ['tplName','tplBrand','tplSender','tplProduct','tplSelling','tplCompany','tplWhatsapp','tplReplyTo','tplFrom','tplBody'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('tplFormTitle').textContent = '新建开发信模板';
+  document.getElementById('tplSave').style.display = '';
+  document.getElementById('tplUpdate').style.display = 'none';
+}
+
+async function deleteTemplate(id) {
+  if (!confirm('确定删除该模板？')) return;
+  const resp = await fetch('/api/templates?id=' + id, { method: 'DELETE' });
+  const d = await resp.json();
+  if (d.error) { alert('删除失败：' + d.error); return; }
+  await loadTemplates();
+}
+
+async function setDefaultTpl(id) {
+  const resp = await fetch('/api/templates', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, is_default: true }) });
+  const d = await resp.json();
+  if (d.error) { alert('设置失败：' + d.error); return; }
+  await loadTemplates();
+}
+
+function waLink(w) {
+  if (!w) return '';
+  const digits = w.replace(/[^\d]/g, '');
+  if (digits && digits.length >= 6) return 'https://wa.me/' + digits;
+  return w;
+}
+
+// 套用模板（免 AI）：用 body_tpl 占位符渲染客户 + 模板数据
+function applyTemplateInstant() {
+  const hint = document.getElementById('draftHint');
+  if (!currentTpl || !currentTpl.body_tpl || !currentTpl.body_tpl.trim()) {
+    if (hint) hint.textContent = '当前模板未设置「正文模板」，请用 AI 生成，或在模板页填写正文模板。';
+    return;
+  }
+  const r = draftRow || {};
+  const map = {
+    '{{company}}': r.name || '',
+    '{{website}}': r.url || '',
+    '{{product}}': currentTpl.product || '',
+    '{{whatsapp}}': waLink(currentTpl.whatsapp),
+    '{{sender}}': currentTpl.sender || '',
+    '{{brand}}': currentTpl.brand || '',
+    '{{company_info}}': currentTpl.company || ''
+  };
+  let body = currentTpl.body_tpl;
+  for (const k in map) body = body.split(k).join(map[k]);
+  const companyName = (r.name || '').trim();
+  const subject = (currentTpl.brand ? currentTpl.brand + ' — ' : '') + 'Custom ' + (currentTpl.product || 'badges/pins') + (companyName ? ' for ' + companyName : '');
+  document.getElementById('draftSubject').value = subject;
+  document.getElementById('draftBody').value = body;
+  draftRow.draft = { subject, body };
+  if (hint) hint.textContent = '已按模板生成（免 AI），可手动微调后发送 / 复制。';
+}
+
+document.getElementById('tplSave').addEventListener('click', saveTemplate);
+document.getElementById('tplUpdate').addEventListener('click', saveTemplate);
+document.getElementById('tplClear').addEventListener('click', clearTplForm);
+document.getElementById('draftTpl').addEventListener('change', onDraftTplChange);
+document.getElementById('draftApplyTpl').addEventListener('click', applyTemplateInstant);
+loadTemplates();
 
 // ========== 扩词助手（产品词扩词）==========
 let suggestedQueries = [];    // 当前生成的搜索词列表

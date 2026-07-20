@@ -38,6 +38,25 @@ ALTER TABLE leads ADD COLUMN email_verify TEXT;     -- JSON：每个邮箱的检
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at DESC);
 
+-- ===== 开发信模板表（多套发件人资料，供生成开发信时选用） =====
+CREATE TABLE IF NOT EXISTS templates (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,                 -- 模板名称
+  brand       TEXT,                          -- 品牌名
+  sender      TEXT,                          -- 发件人姓名
+  product     TEXT,                          -- 产品
+  selling     TEXT,                          -- 卖点 / 公司信息（MOQ/交期/定制/价格等）
+  company     TEXT,                          -- 公司信息（公司名/官网）
+  whatsapp    TEXT,                          -- WhatsApp 号码（可带 wa.me 链接）
+  reply_to    TEXT,                          -- 回复接收邮箱（Reply-To）
+  from_addr   TEXT,                          -- 发件邮箱 / 显示名（From）
+  body_tpl    TEXT,                          -- 可选正文模板，支持占位符 {{company}} {{website}} {{product}} {{whatsapp}} {{sender}} {{brand}} {{company_info}}
+  is_default  INTEGER DEFAULT 0,             -- 1=默认模板
+  created_at  TEXT,
+  updated_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_templates_default ON templates(is_default DESC);
+
 -- ===== 若从零新建库，可直接用下面这个完整建表（含初筛字段）替代开头 CREATE TABLE =====
 -- CREATE TABLE IF NOT EXISTS leads (
 --   id            INTEGER PRIMARY KEY AUTOINCREMENT,
