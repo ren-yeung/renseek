@@ -370,7 +370,7 @@
           <div><label>WhatsApp</label><input id="tplWhatsapp" placeholder="如 +86 138 0000 0000" /></div>
           <div><label>回复邮箱（Reply-To）</label><input id="tplReplyTo" placeholder="如 ycr13120902436@gmail.com" /></div>
           <div style="grid-column:1/-1"><label>发件邮箱 / 显示名（From，可选）</label><input id="tplFrom" placeholder="如 PinCraft <hello@kuajing.space>" /></div>
-          <div style="grid-column:1/-1"><label>正文模板（可选，支持占位符，套用模板时免 AI 直接生成）</label>
+          <div style="grid-column:1/-1"><label>正文模板（可选，留作参考）</label>
             <textarea id="tplBody" style="min-height:120px" placeholder="Hi {{company}},&#10;&#10;We are {{brand}}, specialized in {{product}}...&#10;WhatsApp: {{whatsapp}}&#10;&#10;Best,&#10;{{sender}}"></textarea>
             <div class="hint" style="margin-top:4px">可用占位符：<code>{{company}}</code> 客户名、<code>{{website}}</code> 客户网址、<code>{{product}}</code> 本模板产品、<code>{{whatsapp}}</code> WhatsApp、<code>{{sender}}</code> 发件人、<code>{{brand}}</code> 品牌、<code>{{company_info}}</code> 公司信息</div>
           </div>
@@ -399,7 +399,7 @@
     <label>使用模板</label>
     <div style="display:flex;gap:8px;align-items:center">
       <select id="draftTpl" style="flex:1;padding:9px 11px;border:1px solid #d0d3d9;border-radius:7px;font-size:14px"></select>
-      <button class="mini" id="draftApplyTpl" style="background:var(--accent-green);color:#fff;white-space:nowrap" title="用模板正文直接生成，不调用 AI">套用模板(免AI)</button>
+      <button class="mini" id="draftApplyTpl" style="background:var(--accent-green);color:#fff;white-space:nowrap" title="用模板字段调用 AI 生成正文">套用模板（AI 生成）</button>
     </div>
     <label>主题</label>
     <input id="draftSubject" placeholder="生成后自动填充，可手动修改" />
@@ -1488,7 +1488,7 @@ function renderTplList(list) {
       <div class="hint" style="margin:6px 0">
         ${[t.brand && ('品牌：' + escHtml(t.brand)), t.sender && ('发件人：' + escHtml(t.sender)), t.product && ('产品：' + escHtml(t.product)), t.whatsapp && ('WhatsApp：' + escHtml(t.whatsapp))].filter(Boolean).join(' · ') || '（未填详细信息）'}
       </div>
-      ${t.body_tpl ? '<div class="hint" style="color:#009a29">✓ 含正文模板（可免 AI 套用）</div>' : ''}
+      ${t.body_tpl ? '<div class="hint" style="color:#009a29">✓ 含正文模板</div>' : ''}
       <div class="acts" style="margin-top:10px;gap:8px">
         <button class="mini" onclick="editTemplate(${t.id})">编辑</button>
         <button class="mini ghost" onclick="setDefaultTpl(${t.id})"${t.is_default ? ' disabled style="opacity:.5"' : ''}>设为默认</button>
@@ -1521,7 +1521,7 @@ function onDraftTplChange() {
   currentTpl = id ? (templates.find(t => String(t.id) === id) || null) : null;
   if (id) localStorage.setItem(TPL_LAST_KEY, id); else localStorage.removeItem(TPL_LAST_KEY);
   const btn = document.getElementById('draftApplyTpl');
-  if (btn) btn.disabled = !(currentTpl && currentTpl.body_tpl && currentTpl.body_tpl.trim());
+  if (btn) btn.disabled = !currentTpl;
   if (currentTpl) {
     if (currentTpl.from_addr) document.getElementById('draftFrom').value = currentTpl.from_addr;
     if (currentTpl.reply_to) document.getElementById('draftReplyTo').value = currentTpl.reply_to;
@@ -1603,31 +1603,27 @@ function waLink(w) {
   return w;
 }
 
-// 套用模板（免 AI）：用 body_tpl 占位符渲染客户 + 模板数据
-function applyTemplateInstant() {
+// 套用模板（AI 生成）：用当前模板字段调用 /api/draft 生成正文
+async function applyTemplateInstant() {
   const hint = document.getElementById('draftHint');
-  if (!currentTpl || !currentTpl.body_tpl || !currentTpl.body_tpl.trim()) {
-    if (hint) hint.textContent = '当前模板未设置「正文模板」，请用 AI 生成，或在模板页填写正文模板。';
+  if (!currentTpl) {
+    if (hint) hint.textContent = '请先选择一个模板。';
     return;
   }
-  const r = draftRow || {};
-  const map = {
-    '{{company}}': r.name || '',
-    '{{website}}': r.url || '',
-    '{{product}}': currentTpl.product || '',
-    '{{whatsapp}}': waLink(currentTpl.whatsapp),
-    '{{sender}}': currentTpl.sender || '',
-    '{{brand}}': currentTpl.brand || '',
-    '{{company_info}}': currentTpl.company || ''
-  };
-  let body = currentTpl.body_tpl;
-  for (const k in map) body = body.split(k).join(map[k]);
-  const companyName = (r.name || '').trim();
-  const subject = (currentTpl.brand ? currentTpl.brand + ' — ' : '') + 'Custom ' + (currentTpl.product || 'badges/pins') + (companyName ? ' for ' + companyName : '');
-  document.getElementById('draftSubject').value = subject;
-  document.getElementById('draftBody').value = body;
-  draftRow.draft = { subject, body };
-  if (hint) hint.textContent = '已按模板生成（免 AI），可手动微调后发送 / 复制。';
+  if (!draftRow) return;
+  const btn = document.getElementById('draftApplyTpl');
+  btn.disabled = true; btn.textContent = '生成中…'; if (hint) hint.textContent = '';
+  try {
+    const d = await genOneDraft(draftRow);
+    document.getElementById('draftSubject').value = d.subject || '';
+    document.getElementById('draftBody').value = d.body || '';
+    draftRow.draft = { subject: d.subject, body: d.body };
+    if (hint) hint.textContent = '已按模板字段生成，可手动微调后发送 / 复制。';
+  } catch (e) {
+    if (hint) hint.textContent = '生成失败：' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '套用模板（AI 生成）';
+  }
 }
 
 document.getElementById('tplSave').addEventListener('click', saveTemplate);

@@ -41,6 +41,7 @@ export async function onRequest(context) {
     : '';
 
   const system = `你是一名资深外贸开发信专家，帮助中国供应商（主营定制徽章/胸针/奖牌等促销礼品）给海外潜在买家写英文开发信。要求：
+- 称呼统一用 "Dear Sir/Madam,"，正文中不要出现客户公司名
 - 简洁专业，2-4 段，不超过 160 词
 - 语气自然、不 spammy，突出定制能力、MOQ 灵活、交期稳定、性价比
 - 包含一个明确的行动号召（CTA），邀请客户回复或查看 catalog
@@ -61,7 +62,7 @@ ${companyInfo ? `我们公司信息：${companyInfo}` : ''}
 ${whatsapp ? `我们 WhatsApp：${whatsapp}` : ''}
 ${templateName ? `（本开发信基于模板「${templateName}」生成）` : ''}
 
-要求：用占位符 {{company}} 指代客户公司名（正文中最多出现一次，用于称呼），其余用自然语言。`;
+要求：称呼统一用 "Dear Sir/Madam,"，正文中不要出现客户公司名，其余用自然语言。`;
 
   try {
     const resp = await fetch(`${base}/chat/completions`, {
