@@ -334,6 +334,20 @@
         <option>已回复</option>
         <option>已成交</option>
       </select>
+      <span style="margin-left:8px;display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#5b6472">
+        保存日期
+        <input id="mgrDateFrom" type="date" style="padding:8px 10px;border:1px solid #d0d3d9;border-radius:7px;font-size:13px" />
+        <span>至</span>
+        <input id="mgrDateTo" type="date" style="padding:8px 10px;border:1px solid #d0d3d9;border-radius:7px;font-size:13px" />
+        <select id="mgrDateQuick" style="padding:8px 10px;border:1px solid #d0d3d9;border-radius:7px;font-size:13px">
+          <option value="">快捷</option>
+          <option value="today">今天</option>
+          <option value="7d">近7天</option>
+          <option value="30d">近30天</option>
+          <option value="thisMonth">本月</option>
+          <option value="thisYear">本年</option>
+        </select>
+      </span>
       <button id="mgrRefresh">刷新</button>
       <button id="mgrExport" class="ghost">导出 CSV</button>
       <span class="meta" id="mgrMeta"></span>
@@ -477,6 +491,15 @@ function sourceLabel(src) {
     google_maps: '谷歌地图', overpass: 'OSM地图', all: '全部'
   };
   return (src && map[src]) ? map[src] : (src || '');
+}
+
+// 把 UTC 的 created_at 转成北京时间(UTC+8)的 YYYY-MM-DD 显示
+function beijingDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return (iso || '').slice(0, 10);
+  const bj = new Date(d.getTime() + 8 * 3600 * 1000);
+  return bj.getUTCFullYear() + '-' + String(bj.getUTCMonth() + 1).padStart(2, '0') + '-' + String(bj.getUTCDate()).padStart(2, '0');
 }
 
 // 把英文搜索词翻译为中文（已是中文则原样返回）
@@ -973,21 +996,50 @@ async function devBatchVerify() {
 // ========== 客户管理库（D1）==========
 async function loadLeads() {
   const q = document.getElementById('mgrSearch').value.trim();
+  const from = document.getElementById('mgrDateFrom').value;
+  const to = document.getElementById('mgrDateTo').value;
   const box = document.getElementById('mgrList');
   const meta = document.getElementById('mgrMeta');
   try {
-    const url = '/api/leads' + (q ? '?q=' + encodeURIComponent(q) : '');
+    const params = [];
+    if (q) params.push('q=' + encodeURIComponent(q));
+    if (from) params.push('from=' + encodeURIComponent(from));
+    if (to) params.push('to=' + encodeURIComponent(to));
+    const url = '/api/leads' + (params.length ? '?' + params.join('&') : '');
     const r = await fetch(url);
     const d = await r.json();
     if (d.error) { box.innerHTML = '<div class="err">' + escHtml(d.error) + '</div>'; meta.textContent = ''; return; }
     managedLeads = d.results || [];
     managedLeads.forEach(m => importedSet.add(m.url));
     document.getElementById('mgrCnt').textContent = managedLeads.length;
-    meta.textContent = '共 ' + managedLeads.length + ' 个客户' + (q ? ' · 筛选「' + q + '」' : '');
+    let metaTxt = '共 ' + managedLeads.length + ' 个客户';
+    if (q) metaTxt += ' · 筛选「' + q + '」';
+    if (from || to) metaTxt += ' · 日期 ' + (from || '…') + ' ~ ' + (to || '…');
+    meta.textContent = metaTxt;
     renderMgr();
   } catch (e) {
     box.innerHTML = '<div class="err">加载失败：' + escHtml(String(e)) + '</div>';
   }
+}
+
+// 日期快捷预设：把相对区间换算成 起止日期 填入，再重载
+function applyDateQuick() {
+  const sel = document.getElementById('mgrDateQuick');
+  const val = sel.value;
+  const fromEl = document.getElementById('mgrDateFrom');
+  const toEl = document.getElementById('mgrDateTo');
+  if (!val) { fromEl.value = ''; toEl.value = ''; loadLeads(); return; }
+  const now = new Date();
+  const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  let from = new Date(now), to = new Date(now);
+  if (val === 'today') { /* 今天 */ }
+  else if (val === '7d') { from = new Date(now.getTime() - 6 * 86400000); }
+  else if (val === '30d') { from = new Date(now.getTime() - 29 * 86400000); }
+  else if (val === 'thisMonth') { from = new Date(now.getFullYear(), now.getMonth(), 1); }
+  else if (val === 'thisYear') { from = new Date(now.getFullYear(), 0, 1); }
+  fromEl.value = fmt(from);
+  toEl.value = fmt(to);
+  loadLeads();
 }
 
 function updateMgrKpi() {
@@ -1013,7 +1065,7 @@ function renderMgr() {
     return;
   }
   const allChecked = filtered.length > 0 && filtered.every(m => mgrChecked.has(m.id));
-  let html = '<div class="table-wrap"><table><colgroup><col style="width:3%"><col style="width:18%"><col style="width:5%"><col style="width:9%"><col style="width:7%"><col style="width:12%"><col style="width:20%"><col style="width:8%"><col style="width:9%"><col style="width:7%"><col style="width:9%"></colgroup><thead><tr><th class="chk-th"><input type="checkbox" class="row-check" id="mgrCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>评分</th><th>类型</th><th>来源</th><th>客户类型(搜索词)</th><th>联系方式</th><th>状态</th><th>备注</th><th>开发信</th><th>操作</th></tr></thead><tbody>';
+  let html = '<div class="table-wrap"><table><colgroup><col style="width:3%"><col style="width:17%"><col style="width:5%"><col style="width:8%"><col style="width:6%"><col style="width:11%"><col style="width:11%"><col style="width:18%"><col style="width:7%"><col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:9%"></colgroup><thead><tr><th class="chk-th"><input type="checkbox" class="row-check" id="mgrCheckAll"' + (allChecked ? ' checked' : '') + '></th><th>公司/网站</th><th>评分</th><th>类型</th><th>来源</th><th>客户类型(搜索词)</th><th>保存日期</th><th>联系方式</th><th>状态</th><th>备注</th><th>开发信</th><th>操作</th></tr></thead><tbody>';
   filtered.forEach(m => {
     const emails = (m.emails && m.emails.length) ? m.emails : (m.email ? [m.email] : []);
     const contact = [];
@@ -1032,6 +1084,7 @@ function renderMgr() {
       <td data-label="类型">${escHtml(m.type || '')}</td>
       <td data-label="来源">${escHtml(sourceLabel(m.source) || '-')}</td>
       <td data-label="客户类型(搜索词)">${(m.search_term || m.search_term_cn) ? (escHtml(m.search_term || '') + (m.search_term_cn ? ' / ' + escHtml(m.search_term_cn) : '')) : '-'}</td>
+      <td data-label="保存日期">${beijingDate(m.created_at) || '-'}</td>
       <td class="contact" data-label="联系方式">${contact.join('<br>')}</td>
       <td data-label="状态"><select onchange="mgrSetStatus(${m.id}, this.value)" style="width:100%;padding:5px 8px;border:1px solid #d0d3d9;border-radius:6px;font-size:12px;box-sizing:border-box">${['待联系','已联系','已回复','已成交'].map(s => `<option ${m.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
       <td data-label="备注"><input class="note" style="width:100%;padding:5px 8px;border:1px solid #d0d3d9;border-radius:6px;font-size:12px;box-sizing:border-box" placeholder="备注…" value="${escAttr(m.note)}" onchange="mgrSetNote(${m.id}, this.value)" /></td>
@@ -1208,6 +1261,9 @@ document.getElementById('editMask').addEventListener('click', (e) => { if (e.tar
 let mgrTimer = null;
 document.getElementById('mgrSearch').addEventListener('input', () => { clearTimeout(mgrTimer); mgrTimer = setTimeout(loadLeads, 300); });
 document.getElementById('mgrRefresh').addEventListener('click', loadLeads);
+document.getElementById('mgrDateFrom').addEventListener('change', () => { document.getElementById('mgrDateQuick').value = ''; loadLeads(); });
+document.getElementById('mgrDateTo').addEventListener('change', () => { document.getElementById('mgrDateQuick').value = ''; loadLeads(); });
+document.getElementById('mgrDateQuick').addEventListener('change', applyDateQuick);
 document.getElementById('mgrStatusFilter').addEventListener('change', renderMgr);
 document.getElementById('mgrExport').addEventListener('click', () => {
   if (!managedLeads.length) { alert('客户库为空'); return; }

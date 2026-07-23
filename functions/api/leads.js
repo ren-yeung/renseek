@@ -30,6 +30,8 @@ async function handleGet(request, db) {
   const url = new URL(request.url);
   const status = (url.searchParams.get('status') || '').trim();
   const q = (url.searchParams.get('q') || '').trim();
+  const from = (url.searchParams.get('from') || '').trim();
+  const to = (url.searchParams.get('to') || '').trim();
   let sql = 'SELECT * FROM leads WHERE 1=1';
   const binds = [];
   if (status) { sql += ' AND status = ?'; binds.push(status); }
@@ -38,6 +40,9 @@ async function handleGet(request, db) {
     const like = '%' + q + '%';
     binds.push(like, like, like, like, like, like);
   }
+  // 日期筛选：按北京时间(UTC+8)比对保存日期，from/to 为 YYYY-MM-DD
+  if (from) { sql += " AND date(created_at, '+8 hours') >= date(?)"; binds.push(from); }
+  if (to) { sql += " AND date(created_at, '+8 hours') <= date(?)"; binds.push(to); }
   sql += ' ORDER BY (CASE status WHEN "待联系" THEN 0 WHEN "已联系" THEN 1 WHEN "已回复" THEN 2 WHEN "已成交" THEN 3 ELSE 9 END), created_at DESC';
   const { results } = await db.prepare(sql).bind(...binds).all();
   const rows = (results || []).map(normalizeRow);
