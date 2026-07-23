@@ -667,6 +667,9 @@ async function doSearch(queries) {
     emailFilter = 'ALL';
     document.getElementById('filterMeta').textContent = '';
     meta.textContent = `搜索词：${data.query} · 命中 ${data.count} 条`;
+    if (data.cseError) {
+      meta.innerHTML += ` <span style="color:#d4380d;font-weight:500">| Google CSE 错误：${escHtml(data.cseError.message || data.cseErrorNote || '未知')}</span>`;
+    }
     applyFilters();
     document.getElementById('export').disabled = data.results.length === 0;
   } catch (e) {

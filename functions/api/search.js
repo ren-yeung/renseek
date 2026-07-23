@@ -133,13 +133,15 @@ function bochaItemToResult(it, target) {
 }
 
 // ---------- Google Custom Search（Goggle CSE，网页搜索）----------
-async function googleCseSearch(q, key, cx, n) {
+async function googleCseSearch(q, key, cx, n, gl) {
   try {
     const u = new URL('https://www.googleapis.com/customsearch/v1');
     u.searchParams.set('key', key);
     u.searchParams.set('cx', cx);
     u.searchParams.set('q', q);
     u.searchParams.set('num', Math.min(n, 10)); // Google CSE 单次最多 10 条
+    u.searchParams.set('safe', 'off');
+    if (gl) u.searchParams.set('gl', gl);
     const resp = await fetch(u.toString());
     const j = await resp.json();
     if (j.error) {
@@ -480,7 +482,7 @@ export async function onRequest(context) {
     if (wantBocha) tasks.push(...bochaQueries.map(q => bochaSearch(q, env.BOCHA_KEY, n)));
     if (wantMaps) tasks.push(...mapsQueries.map(q => googleMapsSearch(q, env.SERPAPI_KEY, n, gl)));
     if (wantOverpass) tasks.push(overpassSearch(product, bbox, n));
-    if (wantCse) tasks.push(...bochaQueries.map(q => googleCseSearch(q, env.GOOGLE_CSE_KEY, env.GOOGLE_CSE_CX, n)));
+    if (wantCse) tasks.push(...bochaQueries.map(q => googleCseSearch(q, env.GOOGLE_CSE_KEY, env.GOOGLE_CSE_CX, n, gl)));
     if (wantSearxng) tasks.push(...bochaQueries.map(q => searxngSearch(q, searxngUrl, n, target)));
     const fetchedLists = await Promise.all(tasks);
 
@@ -531,10 +533,10 @@ export async function onRequest(context) {
 
     const order = { A: 0, B: 1, C: 2, D: 3 };
     merged.sort((a, b) => (order[a.score] || 9) - (order[b.score] || 9));
-    const resp = { version: 'buyerkw-multi+osm+searxng', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).concat(wantOverpass ? ['[Overpass OSM ' + country + ']'] : []).concat(wantSearxng ? ['[SearXNG]'] : []).join(' | '), count: merged.length, results: merged };
+    const resp = { version: 'buyerkw-multi+osm+searxng', query: (wantBocha ? bochaQueries : []).concat(wantMaps ? mapsQueries : []).concat(wantOverpass ? ['[Overpass OSM ' + country + ']'] : []).concat(wantSearxng ? ['[SearXNG]'] : []).concat(wantCse ? ['[Google CSE]'] : []).join(' | '), count: merged.length, results: merged };
     if (cseError) {
       resp.cseError = cseError;
-      resp.cseErrorNote = 'Google CSE 返回了错误，请检查控制台设置。常见原因：CSE 未启用"搜索整个网络"或 API 密钥未开通 Custom Search API。';
+      resp.cseErrorNote = 'Google CSE 返回了错误（状态：' + (cseError.code || cseError.status || '未知') + '）。请检查：(1) Cloudflare 里的 GOOGLE_CSE_KEY 是否来自这个项目；(2) 控制台的 CSE 搜索引擎是否开启「搜索整个网络」；(3) API key 是否有 IP/HTTP referer 限制。';
     }
     return new Response(
       JSON.stringify(resp),
